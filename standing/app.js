@@ -1,9 +1,9 @@
-// 관객 웹. 앱(flutter/apps/audience)과 같은 서버·같은 규칙:
+// 관객 웹. 화면은 관객 앱(flutter/apps/audience/lib/ui)과 같게, 서버·규칙도 같게:
 // - catalog.json(관리자 게시)으로 공연/구역/대기줄 → 번호로 대기줄 배정 (standing_core QueueLogic 과 동일)
 // - 줄 현황: take_spot / leave_spot / line_spots RPC
 // - 현장 안내: notices 테이블 최근 6시간 + Realtime
 // - 공연장 위치 제한, 줄서기 시작 시각
-// 블루투스 앞뒤 번호 찾기와 푸시 알림은 앱에만 있다.
+// 블루투스 앞뒤 번호 찾기·푸시 알림·예매처 계정 연결은 앱에만 있다.
 'use strict';
 
 const CONFIG = {
@@ -19,6 +19,8 @@ if (location.hostname === 'localhost') {
 
 const db = window.supabase ? window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey) : null;
 const $app = document.getElementById('app');
+const $tabbar = document.getElementById('tabbar');
+const $sheet = document.getElementById('sheet');
 
 // ───────── 저장 (이 브라우저에만) ─────────
 
@@ -33,7 +35,6 @@ const store = {
 
 const state = {
   events: [],
-  catalogNotices: [],
   myCodes: store.get('myEvents', []),
   /** {code, zone, queue, ticket, standing} — 구역/대기줄은 이름으로 저장 */
   participant: store.get('participant', null),
@@ -42,7 +43,9 @@ const state = {
   noticesReadAt: store.get('noticesReadAt', 0),
   spots: [],
   spotsError: null,
+  loadingSpots: false,
   onlyStanding: false,
+  checking: false,     // 위치 확인 중
 };
 store.set('deviceId', state.deviceId);
 
@@ -50,7 +53,7 @@ function newDeviceId() {
   return (crypto.randomUUID && crypto.randomUUID()) || 'web-' + Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
-// ───────── 카탈로그 ─────────
+// ───────── 카탈로그 (standing_core catalog.dart 와 같은 해석) ─────────
 
 /** "2026-10-03 18:00" / "2026-10-03" 은 한국 시간, 그 외는 ISO 8601 */
 function parseDate(raw) {
@@ -106,12 +109,12 @@ function parseCatalog(text) {
       ? { lat: e.location.lat, lng: e.location.lng, radius: e.location.radius || 300 } : null;
     events.push({
       code, title: e.title || '', date: parseDate(e.date), entryAt: e.entry ? parseDate(e.entry) : null,
-      venue: e.venue || '', description: e.description || '', zones, location: loc,
+      venue: e.venue || '', zones, location: loc,
     });
   }
   const notices = (root.notices || []).map((n) => ({
     id: 'catalog:' + n.id, code: String(n.event || '').toUpperCase(), zone: n.zone || null, queue: n.queue || null,
-    min: n.min ?? null, max: n.max ?? null, kind: n.kind || 'info', message: n.message || KINDS[n.kind]?.message || '',
+    min: n.min ?? null, max: n.max ?? null, kind: n.kind || 'info', message: n.message || kind(n.kind).message,
     at: n.createdAt ? parseDate(n.createdAt).getTime() : Date.now(),
   }));
   return { events, notices };
@@ -120,22 +123,19 @@ function parseCatalog(text) {
 function applyCatalog(text) {
   const r = parseCatalog(text);
   state.events = r.events;
-  state.catalogNotices = r.notices;
   r.notices.forEach(receiveNotice);
 }
 
 async function loadCatalog() {
   const cached = store.get('catalog', null);
-  if (cached) { try { applyCatalog(cached); } catch { /* 깨진 캐시는 무시 */ } }
+  if (cached && !state.events.length) { try { applyCatalog(cached); } catch { /* 깨진 캐시는 무시 */ } }
   try {
     const res = await fetch(CONFIG.catalogUrl + '?t=' + Math.floor(Date.now() / 1000), { cache: 'no-store' });
     if (!res.ok) throw new Error('서버 응답 ' + res.status);
     const text = await res.text();
     applyCatalog(text);
     store.set('catalog', text);
-  } catch (err) {
-    if (!state.events.length) toast('공연 정보를 받지 못했습니다', '인터넷 연결을 확인하고 새로고침해 주세요.');
-  }
+  } catch { /* 오프라인이면 캐시로 */ }
 }
 
 const isPast = (e) => e.date.getTime() + 24 * 3600e3 < Date.now();
@@ -167,7 +167,7 @@ function assign(ticket, zone) {
   return q ? { queue: q } : { error: '이 번호에 해당하는 대기줄이 아직 설정되지 않았습니다.' };
 }
 
-// ───────── 공연장 위치 제한 ─────────
+// ───────── 공연장 위치 제한 (location_gate.dart 와 같은 문구) ─────────
 
 function distance(lat1, lng1, lat2, lng2) {
   const R = 6371000, rad = (d) => d * Math.PI / 180;
@@ -191,7 +191,7 @@ function checkLocation(event) {
         resolve(`이 공연은 공연장에서만 사용할 수 있습니다.\n현재 위치가 공연장에서 약 ${text} 떨어져 있습니다. (허용 반경 ${Math.round(loc.radius)}m · 위치 정확도 ±${Math.round(accuracy)}m)`);
       },
       (err) => resolve(err.code === err.PERMISSION_DENIED
-        ? '이 공연은 공연장 안에서만 사용할 수 있어 위치 권한이 필요합니다. 브라우저 설정에서 위치를 허용해 주세요.'
+        ? '이 공연은 공연장 안에서만 사용할 수 있어 위치 권한이 필요합니다. 설정에서 허용해 주세요.'
         : '현재 위치를 확인하지 못했습니다. 실내에서는 시간이 걸릴 수 있으니 창가나 실외에서 다시 시도해 주세요.'),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
@@ -206,14 +206,13 @@ function syncSpot() {
   clearInterval(heartbeat);
   heartbeat = null;
   if (!db) return;
-  const c = current();
-  if (!c) { db.rpc('leave_spot', { p_device_id: state.deviceId }).then(() => {}, () => {}); return; }
+  if (!current()) { db.rpc('leave_spot', { p_device_id: state.deviceId }).then(() => {}, () => {}); return; }
   const report = () => {
-    const now = current();
-    if (!now) return;
+    const c = current();
+    if (!c) return;
     db.rpc('take_spot', {
-      p_event_code: now.e.code, p_device_id: state.deviceId, p_ticket_number: now.p.ticket,
-      p_zone: now.z.name, p_queue: now.q.name, p_standing: !!now.p.standing,
+      p_event_code: c.e.code, p_device_id: state.deviceId, p_ticket_number: c.p.ticket,
+      p_zone: c.z.name, p_queue: c.q.name, p_standing: !!c.p.standing,
     }).then(() => {}, () => {});
   };
   report();
@@ -222,21 +221,25 @@ function syncSpot() {
 
 async function refreshSpots() {
   const c = current();
-  if (!db || !c) return;
+  if (!db || !c || state.loadingSpots) return;
+  state.loadingSpots = true;
+  if (route().name === 'line') render();
   const { data, error } = await db.rpc('line_spots', { p_event_code: c.e.code, p_zone: c.z.name, p_queue: c.q.name, p_within_seconds: 600 });
-  if (error) { state.spotsError = error.message; } else { state.spots = (data || []).map((r) => ({ n: +r.ticket_number, standing: r.standing === true })); state.spotsError = null; }
+  state.loadingSpots = false;
+  if (error) state.spotsError = error.message;
+  else { state.spots = (data || []).map((r) => ({ n: +r.ticket_number, standing: r.standing === true })); state.spotsError = null; }
   if (route().name === 'line') render();
 }
 
 // ───────── 현장 안내 ─────────
 
 const KINDS = {
-  moveBack: { title: '뒤로 이동', message: '대기줄이 밀렸습니다. 뒤로 이동해 주세요.', color: '#FF9500', icon: '⬅' },
-  moveForward: { title: '앞으로 이동', message: '앞 공간이 비었습니다. 앞으로 이동해 주세요.', color: '#2F6BFF', icon: '➡' },
-  entryReady: { title: '입장 준비', message: '곧 입장합니다. 티켓과 신분증을 준비해 주세요.', color: '#34C759', icon: '🚪' },
-  info: { title: '안내', message: '', color: '#AF52DE', icon: '📣' },
+  moveBack: { title: '뒤로 이동', message: '대기줄이 밀렸습니다. 뒤로 이동해 주세요.', icon: 'arrow_circle_left', color: 'var(--orange)' },
+  moveForward: { title: '앞으로 이동', message: '앞 공간이 비었습니다. 앞으로 이동해 주세요.', icon: 'arrow_circle_right', color: 'var(--accent)' },
+  entryReady: { title: '입장 준비', message: '곧 입장합니다. 티켓과 신분증을 준비해 주세요.', icon: 'meeting_room', color: 'var(--accent)' },
+  info: { title: '안내', message: '', icon: 'campaign', color: 'var(--accent)' },
 };
-const kind = (k) => KINDS[k] || KINDS.info;
+function kind(k) { return KINDS[k] || KINDS.info; }
 
 function targets(n, c) {
   if (!c || n.code !== c.e.code) return false;
@@ -254,8 +257,7 @@ function receiveNotice(n) {
   state.notices.push(n);
   state.notices = state.notices.slice(-200);
   store.set('notices', state.notices);
-  const c = current();
-  if (targets(n, c) && n.at > Date.now() - 10 * 60e3) toast(kind(n.kind).title, n.message);
+  if (targets(n, current()) && n.at > Date.now() - 10 * 60e3) toast(n);
   render();
 }
 
@@ -270,7 +272,7 @@ let channel = null, channelCode = null;
 async function syncNotices() {
   const code = current()?.e.code || null;
   if (code === channelCode) return;
-  if (channel) { db.removeChannel(channel); channel = null; }
+  if (channel && db) { db.removeChannel(channel); channel = null; }
   channelCode = code;
   if (!db || !code) return;
   const fromRow = (r) => ({
@@ -307,21 +309,37 @@ function leaveEvent() {
   state.participant = null;
   state.spots = [];
   saveParticipant();
+  render();
 }
 
-function setStanding(on) {
-  if (!state.participant) return;
+/** [줄에 섰어요] 켜기/끄기 — 줄서기 시작 전에는 막고, 위치 제한 공연은 현장에서만 (standing_toggle.dart) */
+async function setStanding(on) {
+  const c = current();
+  if (!c) return;
+  if (on) {
+    if (c.e.entryAt && c.e.entryAt > Date.now()) return;
+    if (c.e.location) {
+      state.checking = true;
+      render();
+      const denied = await checkLocation(c.e);
+      state.checking = false;
+      if (denied) { render(); dialog('공연장에서만 사용할 수 있습니다', denied); return; }
+    }
+  }
   state.participant.standing = on;
   saveParticipant();
   refreshSpots();
   render();
 }
 
-// ───────── 화면 도우미 ─────────
+// ───────── 표시 도우미 ─────────
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+/** Material 아이콘. variant: '' (filled) · 'outlined' · 'round' */
+const ic = (name, variant = '', size) => `<span class="mi material-icons${variant ? '-' + variant : ''}"${size ? ` style="font-size:${size}px"` : ''}>${name}</span>`;
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n) => String(n).padStart(2, '0');
+/** "9월 21일 (일) 18:00" (format.dart koreanShort) */
 const koreanShort = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일 (${DAYS[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const timeShort = (d) => `${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${pad(d.getMinutes())}`;
 
@@ -333,186 +351,184 @@ function remainingText(ms) {
   return m ? `${h}시간 ${m}분` : `${h}시간`;
 }
 
-function dDay(date) {
-  const a = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const now = new Date(), b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((a - b) / 86400e3);
-  return days === 0 ? 'D-DAY' : days > 0 ? `D-${days}` : `D+${-days}`;
-}
-
 let toastTimer = null;
-function toast(title, body) {
+function toast(n) {
   const el = document.getElementById('toast');
-  el.innerHTML = `<b>${esc(title)}</b><span class="small hint">${esc(body)}</span>`;
+  const k = kind(n.kind);
+  el.innerHTML = `<span style="color:${k.color}">${ic(k.icon)}</span><div><b>${esc(k.title)}</b><span class="hint">${esc(n.message)}</span></div>`;
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
 }
 
-function dialog(title, body) {
-  const sheet = document.getElementById('sheet');
-  sheet.innerHTML = `<div class="dialog"><h3>${esc(title)}</h3><div class="hint">${esc(body)}</div><div class="actions"><button class="btn-text" data-action="close-sheet">확인</button></div></div>`;
-  sheet.style.alignItems = 'center';
-  sheet.hidden = false;
+/** AlertDialog. actions: [{label, id, danger}] — 누른 id 로 resolve */
+function dialog(title, body, actions = [{ label: '확인', id: 'ok' }]) {
+  return new Promise((resolve) => {
+    $sheet.innerHTML = `<div class="dialog"><h3>${esc(title)}</h3><p>${esc(body)}</p><div class="acts">${actions
+      .map((a) => `<button class="text-btn" data-dialog="${a.id}"${a.danger ? ' style="color:var(--red)"' : ''}>${esc(a.label)}</button>`).join('')}</div></div>`;
+    $sheet.hidden = false;
+    dialogDone = (id) => { $sheet.hidden = true; dialogDone = null; resolve(id); };
+  });
 }
+let dialogDone = null;
 
-function standingButton(c) {
+/** 줄에 섰어요 토글 (StandingToggle). compact 는 카드 안 48 높이 */
+function standingToggle(c, compact = false) {
+  const cls = `filled big${compact ? ' compact' : ''}`;
   const left = c.e.entryAt ? c.e.entryAt.getTime() - Date.now() : 0;
   if (!c.p.standing && left > 0) {
-    return `<button class="btn-grad btn-big btn-gray" disabled>⏱ 줄서기 ${remainingText(left)} 뒤 시작</button>
-      <div class="small hint center" style="margin-top:4px">${koreanShort(c.e.entryAt)} 부터 줄설 수 있습니다.</div>`;
+    return `<button class="${cls}" disabled>${ic('schedule')}<span>줄서기 ${remainingText(left)} 뒤 시작</span></button>
+      <div class="hint center" style="font-size:12px;margin-top:4px">${koreanShort(c.e.entryAt)} 부터 줄설 수 있습니다.</div>`;
   }
+  if (state.checking) return `<button class="${cls}" disabled>${ic('person_pin_circle')}<span>위치 확인 중…</span></button>`;
   return c.p.standing
-    ? `<button class="btn-grad btn-big btn-gray" data-action="stand-off">줄에서 나왔어요</button>`
-    : `<button class="btn-grad btn-big" data-action="stand-on">📍 줄에 섰어요</button>`;
+    ? `<button class="${cls} grey" data-action="stand-off">${ic('logout')}<span>줄에서 나왔어요</span></button>`
+    : `<button class="${cls}" data-action="stand-on">${ic('person_pin_circle')}<span>줄에 섰어요</span></button>`;
 }
 
-// ───────── 화면 ─────────
+const appbar = (title, { back, actions = '' } = {}) => `
+  <header class="appbar">
+    ${back ? `<button class="icon-btn lead" data-go="${back}" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button>` : ''}
+    <h1>${esc(title)}</h1>
+    <div class="acts">${actions}</div>
+  </header>`;
+
+// ───────── 화면 (lib/ui/*.dart 를 그대로) ─────────
 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   if (parts[0] === 'e' && parts[1]) return { name: 'entry', code: parts[1].toUpperCase(), edit: parts[2] === 'edit' };
   if (parts[0] === 'q') return { name: 'queue' };
   if (parts[0] === 'line') return { name: 'line' };
+  if (parts[0] === 'account') return { name: 'account' };
+  if (parts[0] === 'scan') return { name: 'scan' };
   return { name: 'home' };
 }
 const go = (hash) => { location.hash = hash; };
 
+// home.dart
 function viewHome() {
   const c = current();
-  const mine = state.myCodes.map(eventByCode).filter(Boolean).sort((a, b) => a.date - b.date);
-  const tickets = mine.map((e) => {
+  const my = state.myCodes.map(eventByCode).filter(Boolean).sort((a, b) => a.date - b.date);
+  const unread = unreadCount();
+  const cards = my.map((e) => {
     const joined = c && c.e.code === e.code;
-    const head = `
-      <div class="t-top">
-        <div class="grow">
-          <span class="pill">${dDay(e.date)}</span>
-          <div class="t-title">${esc(e.title)}</div>
-          <div class="t-sub">${koreanShort(e.date)}</div>
-          ${e.venue ? `<div class="t-sub">${esc(e.venue)}</div>` : ''}
-        </div>
-        <div class="t-date"><small>${e.date.getMonth() + 1}월</small><b>${e.date.getDate()}</b></div>
-        <button class="ticket-x" data-action="forget" data-code="${e.code}" aria-label="내 공연에서 지우기">✕</button>
-      </div>`;
-    const stub = joined
-      ? `<div class="fields">
-          <div><div class="f-label">구역</div><div class="f-value">${esc(c.z.name)}</div></div>
-          <div><div class="f-label">대기줄</div><div class="f-value">${esc(c.q.name)}</div></div>
-          <div><div class="f-label">입장번호</div><div class="f-big">${c.p.ticket}번</div></div>
-        </div>
-        ${standingButton(c)}
-        <div class="row-links">
-          <button class="btn-text" data-go="#/line">▦ 줄 현황 보기</button>
-          <button class="btn-text muted" data-go="#/e/${e.code}/edit">번호 수정</button>
-        </div>`
-      : `<button class="btn-grad" style="width:100%;margin-top:6px" data-go="#/e/${e.code}">번호 입력 →</button>`;
-    return `<section class="ticket">
-      <div class="ticket-head ticket-tap" data-go="${joined ? '#/q' : '#/e/' + e.code}">${head}</div>
-      <div class="ticket-cut"></div>
-      <div class="ticket-stub">${stub}</div>
-    </section>`;
+    return `<div class="card event-card" data-card="${e.code}" data-go="${joined ? '#/q' : '#/e/' + e.code}">
+      <h3>${esc(e.title)}</h3>
+      <div class="meta" style="margin-top:8px">${ic('calendar_today', 'outlined')}<span>${koreanShort(e.date)}</span></div>
+      <div class="meta" style="margin-top:4px">${ic('place', 'outlined')}<span>${esc(e.venue)}</span></div>
+      <div style="height:14px"></div>
+      ${joined ? `
+        <div class="seat"><span><span class="hint">${esc(c.z.name)} · ${esc(c.q.name)}&nbsp;&nbsp;</span><b>${c.p.ticket}번</b></span>
+          <button class="text-btn tight" data-go="#/e/${e.code}/edit">번호 수정</button></div>
+        <div style="height:10px"></div>
+        ${standingToggle(c, true)}
+        <div style="height:4px"></div>
+        <div class="links"><button class="text-btn" data-go="#/line">${ic('grid_view', 'round')}줄 현황 보기</button></div>`
+      : `<div style="text-align:right"><button class="filled" data-go="#/e/${e.code}">번호 입력</button></div>`}
+    </div>`;
   }).join('');
 
-  return `
-    <div class="topbar"><span></span>
-      <button class="icon-btn" data-action="notices" aria-label="알림">🔔${unreadCount() ? '<span class="badge-dot"></span>' : ''}</button>
-    </div>
-    <div class="brand">입장번호</div>
-    <form class="code-row" data-form="code">
-      <label class="field"><span class="hint">🔍</span><input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="공연 코드 입력"></label>
-      <button class="btn-grad" type="submit">추가</button>
-    </form>
-    <div id="code-error"></div>
-    <div class="section-title">내 공연</div>
-    ${tickets || `<div class="empty"><div class="orb">🎫</div><h3>아직 공연이 없어요</h3><div class="hint">공연장 QR을 스캔하거나 공연 코드를 입력하면<br>여기에 공연이 추가됩니다.</div></div>`}
-    <div class="app-note">📱 앱을 설치하면 블루투스로 앞뒤 번호 관객을 찾고, 현장 안내를 알림으로 받을 수 있어요.</div>`;
+  return `${appbar('입장번호', { actions: `<button class="icon-btn" data-action="notices" aria-label="알림">${ic(unread ? 'notifications_active' : 'notifications_none')}${unread ? '<span class="badge"></span>' : ''}</button>` })}
+    <div class="body">
+      <form class="code-row" data-form="code">
+        <input id="code" class="input code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="공연 코드 6자리">
+        <button class="filled" type="submit">추가</button>
+      </form>
+      <div id="code-error"></div>
+      <div class="section">내 공연</div>
+      ${cards ? `<div class="cards">${cards}</div>`
+        : `<div class="empty">${ic('confirmation_number', 'outlined')}<p>공연장 QR을 스캔하거나 공연 코드를 입력하면<br>여기에 공연이 추가됩니다.</p></div>`}
+    </div>`;
 }
 
+// ticket_entry.dart
+let entryZone = null;
 function viewEntry(r) {
   const e = eventByCode(r.code);
-  if (!e) return `<div class="topbar"><button class="icon-btn" data-go="#/">‹</button><h1>번호 입력</h1><span style="width:44px"></span></div><div class="empty"><h3>공연을 찾을 수 없습니다</h3><div class="hint">공연 코드를 확인하거나 주최 측 안내를 확인해 주세요.</div></div>`;
+  if (!e) return `${appbar('번호 입력', { back: '#/' })}<div class="center" style="padding-top:40vh">공연을 찾을 수 없습니다</div>`;
   const p = state.participant?.code === e.code ? state.participant : null;
   const locked = !!p && !r.edit;
-  const zoneName = entryZone ?? p?.zone ?? (e.zones.length === 1 ? e.zones[0].name : null);
-  entryZone = zoneName;
-  const chips = e.zones.map((z) => `<button class="chip ${z.name === zoneName ? 'on' : ''}" data-action="zone" data-zone="${esc(z.name)}" ${locked ? 'disabled' : ''}><b>${esc(z.name)}</b><small>${z.min}~${z.max}</small></button>`).join('');
-  return `
-    <div class="topbar"><button class="icon-btn" data-go="#/" aria-label="뒤로">‹</button><h1>번호 입력</h1><span style="width:44px"></span></div>
-    <div class="event-head">
-      <div class="date-block"><small>${e.date.getMonth() + 1}월</small><b>${e.date.getDate()}</b></div>
-      <div><h2>${esc(e.title)}</h2><div class="hint small">${koreanShort(e.date)} · ${esc(e.venue)}</div></div>
-    </div>
-    <div class="label">구역</div>
-    ${e.zones.length ? `<div class="chips">${chips}</div>` : '<div class="hint">아직 구역이 설정되지 않은 공연입니다.</div>'}
-    <div class="label">입장번호</div>
-    <form data-form="ticket">
-      <input id="ticket" class="number-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="번호 입력" value="${p ? p.ticket : ''}" ${locked ? 'readonly' : ''}>
+  if (entryZone == null) entryZone = p?.zone ?? (e.zones.length === 1 ? e.zones[0].name : null);
+  const chips = e.zones.map((z) => `<button class="chip ${z.name === entryZone ? 'on' : ''}" data-action="zone" data-zone="${esc(z.name)}" ${locked ? 'disabled' : ''}><b>${esc(z.name)}</b><small>${z.min}~${z.max}</small></button>`).join('');
+  return `${appbar('번호 입력', { back: '#/' })}
+    <form class="body" data-form="ticket">
+      <h2 class="title-22">${esc(e.title)}</h2>
+      <div class="sub-14">${koreanShort(e.date)} · ${esc(e.venue)}</div>
+      <div style="height:28px"></div>
+      <div class="section-title">구역</div>
+      ${e.zones.length ? `<div class="chips">${chips}</div>` : '<div class="hint">아직 구역이 설정되지 않은 공연입니다.</div>'}
+      <div style="height:24px"></div>
+      <div class="section-title">입장번호</div>
+      <input id="ticket" class="input ticket" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="번호 입력" value="${p ? p.ticket : ''}" ${locked ? 'readonly' : ''}>
       <div id="preview"></div>
       <div id="ticket-error"></div>
-      ${e.location ? `<div class="small hint" style="margin-top:18px">📍 공연장 반경 ${Math.round(e.location.radius)}m 안에서만 사용할 수 있습니다.</div>` : ''}
-      <div style="margin-top:18px">
-        ${locked
-          ? `<div class="small hint" style="margin-bottom:8px">🔒 확인한 번호로 고정되어 있습니다. 바꾸려면 [수정]을 누르세요.</div>
-             <button type="button" class="btn-grad btn-big btn-gray" data-go="#/e/${e.code}/edit">수정</button>
-             <div class="center"><button type="button" class="btn-text" data-go="#/q">내 대기줄 보기</button></div>`
-          : `<button class="btn-grad btn-big" id="confirm" ${zoneName ? '' : 'disabled'}>✓ 확인</button>`}
-      </div>
+      <div style="height:24px"></div>
+      ${e.location ? `<div class="note">${ic('location_on', 'outlined')}<span>공연장 반경 ${Math.round(e.location.radius)}m 안에서만 사용할 수 있습니다.</span></div><div style="height:8px"></div>` : ''}
+      ${locked
+        ? `<div class="note">${ic('lock', 'outlined')}<span>확인한 번호로 고정되어 있습니다. 바꾸려면 [수정]을 누르세요.</span></div>
+           <div style="height:8px"></div>
+           <button type="button" class="filled big" data-go="#/e/${e.code}/edit">${ic('edit')}<span>수정</span></button>
+           <div style="height:8px"></div>
+           <button type="button" class="text-btn" data-go="#/q">${ic('confirmation_number', 'outlined')}내 대기줄 보기</button>`
+        : `<button class="filled big" id="confirm" ${entryZone ? '' : 'disabled'}>${ic('check')}<span>확인</span></button>`}
     </form>`;
 }
-let entryZone = null;
 
 function updatePreview() {
-  const r = route();
-  const e = eventByCode(r.code || '');
+  const e = eventByCode(route().code || '');
   const el = document.getElementById('preview');
   if (!e || !el) return;
   const z = zoneOf(e, entryZone);
   if (!z) { el.innerHTML = ''; return; }
   const t = parseTicket(document.getElementById('ticket').value);
-  const a = t.value != null ? assign(t.value, z) : null;
-  el.innerHTML = a?.queue
-    ? `<div class="preview"><span class="ok">✔</span><div><b>${esc(z.name)} · ${esc(a.queue.name)}</b><div class="small hint">이 줄의 입장번호 ${rangeText(a.queue)}</div></div></div>`
-    : `<div class="small hint" style="margin-top:12px">${esc(z.name)} 번호 범위: ${z.min}~${z.max}번 · 번호를 넣으면 대기줄이 정해집니다</div>`;
+  const q = t.value != null ? assign(t.value, z).queue : null;
+  el.innerHTML = `<div style="height:12px"></div>` + (q
+    ? `<div class="card preview-card">${ic('check_circle')}<div><b>${esc(z.name)} · ${esc(q.name)}</b><span class="hint" style="font-size:13px">이 줄의 입장번호 ${rangeText(q)}</span></div></div>`
+    : `<div class="hint" style="font-size:13px">${esc(z.name)} 번호 범위: ${z.min}~${z.max}번 · 번호를 넣으면 대기줄이 정해집니다</div>`);
 }
 
+// queue_result.dart
 function viewQueue() {
   const c = current();
-  if (!c) return `<div class="topbar"><button class="icon-btn" data-go="#/">‹</button><h1>대기줄 확인</h1><span style="width:44px"></span></div><div class="empty"><h3>참가 정보가 없습니다</h3></div>`;
-  return `
-    <div class="topbar"><button class="icon-btn" data-go="#/" aria-label="뒤로">‹</button><h1>대기줄 확인</h1><span style="width:44px"></span></div>
-    <section class="ticket">
-      <div class="ticket-head center"><div class="t-sub">${esc(c.e.title)}</div><div style="font-size:30px;font-weight:700;margin-top:4px">${esc(c.z.name)}</div></div>
-      <div class="ticket-cut"></div>
-      <div class="ticket-stub">
-        <div class="center f-label" style="margin-top:4px">당신의 번호</div>
-        <div class="big-number">${c.p.ticket}</div>
-        <div class="info-row"><span>대기줄</span><span>${esc(c.q.name)}</span></div>
-        <div class="info-row"><span>입장번호</span><span>${rangeText(c.q)}</span></div>
-      </div>
-    </section>
-    <div class="group">
-      <button class="group-row" data-go="#/line"><span class="ico">▦</span><span class="grow"><b>줄 현황 보기</b><span class="small hint">지금 이 줄에 와 있는 번호를 보고 내 자리를 찾으세요</span></span><span class="chev">›</span></button>
+  if (!c) return `${appbar('대기줄 확인', { back: '#/' })}<div class="center" style="padding-top:40vh">참가 정보가 없습니다</div>`;
+  return `${appbar('대기줄 확인', { back: '#/' })}
+    <div class="body" style="padding-top:20px">
+      <div style="height:12px"></div>
+      <div class="center hint" style="font-size:15px">${esc(c.e.title)}</div>
+      <div class="center" style="font-size:28px;font-weight:700;margin-top:6px">${esc(c.z.name)}</div>
+      <div class="center hint" style="font-size:14px;margin-top:20px">내 입장번호</div>
+      <div class="big-number">${c.p.ticket}</div>
+      <div style="height:24px"></div>
+      <div class="card info"><div class="info-row"><span>대기줄</span><span>${esc(c.q.name)}</span></div><div class="info-row"><span>이 줄 번호</span><span>${rangeText(c.q)}</span></div></div>
+      <div style="height:12px"></div>
+      <div class="card"><button class="tile two" data-go="#/line"><span class="tile-icon">${ic('grid_view', 'round')}</span><span class="t"><b>줄 현황 보기</b><small>와 있는 번호를 보고 내 자리 찾기</small></span>${ic('chevron_right', '', 24).replace('class="mi', 'class="chev mi')}</button></div>
     </div>
-    <div class="bottom-bar">${standingButton(c)}
-      <div class="center"><button class="btn-text" data-go="#/e/${c.e.code}/edit">번호 변경</button></div>
-    </div>`;
+    <div class="bottom-actions">${standingToggle(c)}<button class="text-btn" data-go="#/e/${c.e.code}/edit">번호 변경</button></div>`;
 }
 
+// line_map.dart
 function viewLine() {
   const c = current();
-  if (!c) return `<div class="topbar"><button class="icon-btn" data-go="#/">‹</button><h1>줄 현황</h1><span style="width:44px"></span></div><div class="empty"><h3>참가 정보가 없습니다</h3></div>`;
+  if (!c) return `${appbar('줄 현황', { back: '#/q' })}<div class="center" style="padding-top:40vh">참가 정보가 없습니다</div>`;
   const { p, z, q } = c;
   const standing = new Set(state.spots.filter((s) => s.standing).map((s) => s.n));
   if (p.standing) standing.add(p.ticket);
   const isStand = (n) => (n === p.ticket ? p.standing : standing.has(n));
   const total = q.max - q.min + 1;
   const drawn = (q.map?.slots || []).filter((s) => s.n >= q.min && s.n <= q.max);
-  const slot = (n) => `<div class="slot ${isStand(n) ? 'stand' : ''} ${n === p.ticket ? 'mine' : ''}" id="${n === p.ticket ? 'my-slot' : ''}">${n}</div>`;
+  const slot = (n) => `<div class="slot${isStand(n) ? ' stand' : ''}${n === p.ticket ? ' mine' : ''}"${n === p.ticket ? ' id="my-slot"' : ''}>${n}</div>`;
+  const linear = (numbers) => `<ul class="line-list">${numbers.map((n, i) => `
+    <li class="${isStand(n) ? 'stand' : ''} ${n === p.ticket ? 'mine' : ''}">
+      <span class="rail"><span class="${i === 0 ? 'none' : ''}"></span><em></em><span class="${i === numbers.length - 1 ? 'none' : ''}"></span></span>
+      ${slot(n)}
+      ${n === p.ticket ? '<span class="tag mine">내 번호</span>' : isStand(n) ? '<span class="tag">서 있음</span>' : ''}
+    </li>`).join('')}</ul>`;
 
   let body;
   if (state.onlyStanding) {
     const list = [...standing].sort((a, b) => a - b);
-    body = list.length ? linear(list) : `<div class="hint center" style="padding:30px">아직 이 줄에 선 사람이 없습니다.</div>`;
+    body = list.length ? linear(list) : `<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>`;
   } else if (drawn.length) {
     // 주최 측이 그린 배치도 그대로 (빈 자리는 빈칸)
     const ys = drawn.map((s) => s.y), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -520,7 +536,7 @@ function viewLine() {
     for (let y = minY; y <= maxY; y++) {
       const byX = new Map(drawn.filter((s) => s.y === y).map((s) => [s.x, s.n]));
       const cells = [];
-      for (let x = 0; x < q.map.cols; x++) cells.push(byX.has(x) ? slot(byX.get(x)) : '<div></div>');
+      for (let x = 0; x < q.map.cols; x++) cells.push(`<div>${byX.has(x) ? slot(byX.get(x)) : ''}</div>`);
       rows.push(`<div class="map-row" style="grid-template-columns:repeat(${q.map.cols},1fr)">${cells.join('')}</div>`);
     }
     body = rows.join('');
@@ -528,65 +544,181 @@ function viewLine() {
     body = linear(Array.from({ length: total }, (_, i) => q.min + i));
   }
 
-  function linear(numbers) {
-    return `<ul class="line-list">${numbers.map((n, i) => `
-      <li class="${isStand(n) ? 'stand' : ''} ${n === p.ticket ? 'mine' : ''}">
-        <span class="line-rail"><span class="${i === 0 ? 'gone' : ''}"></span><em></em><span class="${i === numbers.length - 1 ? 'gone' : ''}"></span></span>
-        ${slot(n)}
-        ${n === p.ticket ? '<span class="slot-tag mine">내 번호</span>' : isStand(n) ? '<span class="slot-tag">서 있음</span>' : ''}
-      </li>`).join('')}</ul>`;
-  }
-
-  return `
-    <div class="topbar"><button class="icon-btn" data-go="#/q" aria-label="뒤로">‹</button><h1>줄 현황</h1>
-      <span><button class="icon-btn" data-action="only-standing" aria-label="서 있는 사람만 보기" style="display:inline-grid;${state.onlyStanding ? 'color:var(--accent)' : ''}">👤</button><button class="icon-btn" data-action="refresh-spots" aria-label="새로고침" style="display:inline-grid">↻</button></span>
+  const actions = `<button class="icon-btn ${state.onlyStanding ? 'on' : ''}" data-action="only-standing" aria-label="${state.onlyStanding ? '전체 칸 보기' : '서 있는 사람만 보기'}">${ic(state.onlyStanding ? 'person' : 'person_outline')}</button>
+    <button class="icon-btn" data-action="refresh-spots" aria-label="새로고침">${state.loadingSpots ? '<span class="hint" style="font-size:12px">…</span>' : ic('refresh')}</button>`;
+  return `<header class="appbar wide"><button class="icon-btn lead" data-go="#/q" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button><h1>줄 현황</h1><div class="acts">${actions}</div></header>
+    <div class="line-head">
+      <h2>${esc(z.name)} · ${esc(q.name)}</h2>
+      <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standing.size}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
+      ${state.spotsError ? `<div class="error">${ic('warning', 'round')}<span>줄 현황을 받지 못했습니다. ${esc(state.spotsError)}</span></div>` : ''}
+      <div class="legend"><span><i style="background:var(--accent)"></i>줄에 서 있음</span><span><i style="background:var(--orange)"></i>내 번호</span><span><i style="border:1px solid color-mix(in srgb, var(--hint) 67%, transparent)"></i>빈칸</span></div>
+      <div class="dir">${ic('keyboard_double_arrow_up')}<span>${drawn.length && !state.onlyStanding ? '입장 방향 (줄 앞) · 주최 측이 그린 줄 배치' : '입장 방향 (줄 앞)'}</span></div>
+      <div style="height:6px"></div>
     </div>
-    <div style="font-size:20px;font-weight:700">${esc(z.name)} · ${esc(q.name)}</div>
-    <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standing.size}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
-    ${state.spotsError ? `<div class="error-box">줄 현황을 받지 못했습니다. ${esc(state.spotsError)}</div>` : ''}
-    <div class="legend"><span><i class="lg-stand"></i>줄에 서 있음</span><span><i class="lg-mine"></i>내 번호</span><span><i class="lg-empty"></i>빈칸</span></div>
-    <div class="dir">⇡ 입장 방향 (줄 앞)${drawn.length && !state.onlyStanding ? ' · 주최 측이 그린 줄 배치' : ''}</div>
     ${body}
-    <div class="dir" style="margin-top:10px">⇣ 줄 뒤</div>
-    <div class="bottom-bar">${standingButton(c)}
-      <div class="small hint center" style="margin-top:4px">${p.standing ? '내 칸이 줄에 표시되고 있습니다.' : '자리를 찾아 선 뒤 [줄에 섰어요]를 누르면 내 칸이 채워집니다.'}</div>
+    <div class="dir" style="padding:10px 20px 24px">${ic('keyboard_double_arrow_down')}<span>줄 뒤</span></div>
+    <div class="bottom-actions" style="padding-bottom:10px">${standingToggle(c)}
+      <div class="hint center" style="font-size:12px;margin-top:4px">${p.standing ? '내 칸이 줄에 표시되고 있습니다.' : '자리를 찾아 선 뒤 [줄에 섰어요]를 누르면 내 칸이 채워집니다.'}</div>
     </div>`;
+}
+
+// account.dart
+const PROVIDERS = [
+  { name: 'nol', label: 'NOL 티켓', color: '#7B2FF2' },
+  { name: 'yes24', label: 'YES24 티켓', color: '#1E88E5' },
+  { name: 'melon', label: '멜론 티켓', color: '#00C73C' },
+  { name: 'ticketlink', label: '티켓링크', color: '#E53935' },
+];
+function viewAccount() {
+  const c = current();
+  const rows = (items) => items.join('<div class="divider"></div>');
+  const mine = c ? rows([
+    `<div class="tile two"><span class="t"><b style="font-weight:600">${esc(c.e.title)}</b><small>${esc(c.z.name)} · ${esc(c.q.name)} · ${c.p.ticket}번</small></span></div>`,
+    `<label class="tile two">${ic('person_pin_circle', 'outlined')}<span class="t"><b>줄에 서 있음</b><small>켜면 줄 현황에 내 위치가 표시됩니다.</small></span>
+      <span class="switch"><input type="checkbox" data-action="stand-switch" ${c.p.standing ? 'checked' : ''}><i></i></span></label>`,
+    `<button class="tile" data-action="leave"><span class="mi material-icons" style="color:var(--red)">logout</span><span class="t"><b style="color:var(--red)">공연에서 나가기</b></span></button>`,
+  ]) : `<div class="tile"><span class="t"><b class="hint">참가 중인 공연이 없습니다.</b></span></div>`;
+  const providers = rows(PROVIDERS.map((p) => `
+    <button class="tile two" data-action="provider"><span class="logo"><img src="providers/${p.name}.png" alt=""></span>
+      <span class="t"><b>${p.label}</b><small>연결된 계정 없음</small></span>${ic('chevron_right', '', 20)}</button>`));
+  return `${appbar('계정')}
+    <div class="group-header">내 참가</div>
+    <div class="card group">${mine}</div>
+    <div class="group-header">예매처 계정 연결</div>
+    <div class="card group">${providers}</div>
+    <div class="group-footer">예매처와 API 제휴가 되면 연결한 계정의 예매 내역에서 공연·구역·입장번호가 자동으로 채워집니다. 예매처 계정 연결은 앱에서 할 수 있습니다.</div>
+    <div style="height:32px"></div>`;
+}
+
+// qr_join.dart
+function viewScan() {
+  return `<header class="appbar"><span></span><h1>QR 스캔으로 참가</h1><div class="acts"><button class="text-btn" data-go="#/">닫기</button></div></header>
+    <div class="scanner" id="scanner"><span style="padding:24px">카메라를 켜는 중…</span></div>
+    <form class="body" data-form="scan" style="padding-top:20px">
+      <div id="scan-error"></div>
+      <div class="hint">공연장 입구의 QR 을 비추면 바로 번호 입력으로 이동합니다.</div>
+      <div style="height:12px"></div>
+      <div class="code-row"><input id="scan-code" class="input code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="또는 공연 코드 입력 (6자리)" style="height:44px;font-size:16px"><button class="filled">참가</button></div>
+    </form>`;
+}
+
+let scanner = null;
+async function startScanner() {
+  if (!window.Html5Qrcode || scanner) return;
+  const el = document.getElementById('scanner');
+  if (!el) return;
+  el.innerHTML = '';
+  scanner = new window.Html5Qrcode('scanner', { verbose: false });
+  try {
+    await scanner.start({ facingMode: 'environment' }, { fps: 10 }, (text) => handleScan(text), () => {});
+  } catch {
+    scanner = null;
+    el.innerHTML = '<span style="padding:24px">카메라 권한이 필요합니다. 설정에서 허용해 주세요.</span>';
+  }
+}
+async function stopScanner() {
+  if (!scanner) return;
+  const s = scanner;
+  scanner = null;
+  try { await s.stop(); } catch { /* 이미 멈춤 */ }
+}
+
+/** QR 내용(참가 링크 또는 코드)에서 공연 코드 — root.dart JoinLink.code 와 같은 규칙 */
+function joinCode(raw) {
+  const text = String(raw).trim();
+  try {
+    const u = new URL(text);
+    const s = u.protocol.replace(':', '').toLowerCase();
+    const path = u.pathname.toLowerCase();
+    const ok = s === 'standingqueue' ? (u.hostname.toLowerCase() === 'join' || path.startsWith('/join') || path.startsWith('//join'))
+      : (s === 'https' || s === 'http') && /\/join(\/|\.html)?$/.test(path);
+    const c = u.searchParams.get('code')?.toUpperCase();
+    if (ok && c && c.length === 6) return c;
+  } catch { /* URL 아님 */ }
+  const plain = text.toUpperCase();
+  return /^[A-Z0-9]{6}$/.test(plain) ? plain : null;
+}
+
+async function handleScan(raw) {
+  const code = joinCode(raw);
+  let e = code && eventByCode(code);
+  if (code && !e) { await loadCatalog(); e = eventByCode(code); }
+  const err = document.getElementById('scan-error');
+  if (!e) {
+    if (err) err.innerHTML = `<div class="error" style="margin:0 0 8px">${esc(code ? `공연 코드 ${code} 를 찾을 수 없습니다.` : '입장번호 앱의 참가 QR 이 아닙니다.')}</div>`;
+    return;
+  }
+  await stopScanner();
+  openEvent(e.code);
 }
 
 function viewNotices() {
   const c = current();
   const list = myNotices();
-  const rows = list.map((n) => `
-    <div class="notice"><span class="ico" style="background:${kind(n.kind).color}">${kind(n.kind).icon}</span>
-      <div style="flex:1"><time>${timeShort(new Date(n.at))}</time><b>${kind(n.kind).title}</b><div class="small">${esc(n.message)}</div></div></div>`).join('');
   return `<div class="sheet-body">
-    <div class="topbar"><span style="width:44px"></span><h1>알림</h1><button class="btn-text" data-action="close-sheet">닫기</button></div>
-    ${!c ? `<div class="empty"><div class="orb">🔔</div><h3>알림이 없습니다</h3><div class="hint">공연에 참가하면 주최 측의 현장 안내(뒤로 이동, 입장 준비 등)를 여기서 받습니다.</div></div>`
-      : `<div style="padding:8px 0 12px;border-bottom:1px solid var(--line)"><b>${esc(c.e.title)}</b><div class="small hint">${esc(c.q.name)} · ${rangeText(c.q)} · ${koreanShort(c.e.date)}</div></div>
-         <div class="small hint" style="margin-top:12px">주최 측 안내</div>
-         ${rows || '<div class="hint small" style="padding:16px 0">아직 받은 안내가 없습니다.</div>'}`}
+    ${appbar('알림', { actions: '<button class="text-btn" data-action="close-sheet">닫기</button>' })}
+    ${!c ? `<div class="center" style="padding:32px"><div style="padding-top:18vh">${ic('notifications_off', 'outlined', 48).replace('class="mi', 'class="hint mi')}</div>
+        <div style="font-size:18px;font-weight:600;margin-top:12px">알림이 없습니다</div>
+        <div class="hint" style="margin-top:6px">공연에 참가하면 주최 측의 현장 안내(뒤로 이동, 입장 준비 등)를 여기서 받습니다.</div></div>`
+      : `<div class="tile two"><span style="color:var(--accent)">${ic('confirmation_number')}</span><span class="t"><b style="font-weight:600">${esc(c.e.title)}</b><small>${esc(c.q.name)} · ${rangeText(c.q)} · ${koreanShort(c.e.date)}</small></span></div>
+         <div class="divider-full"></div>
+         <div class="hint" style="padding:8px 16px 4px">주최 측 안내</div>
+         ${list.length ? list.map((n) => `<div class="tile two"><span style="color:${n.kind === 'moveBack' ? 'var(--orange)' : 'var(--accent)'}">${ic(kind(n.kind).icon)}</span>
+            <span class="t"><span style="display:flex"><b style="font-weight:700;font-size:15px;flex:1">${kind(n.kind).title}</b><span class="hint" style="font-size:12px">${timeShort(new Date(n.at))}</span></span><small>${esc(n.message)}</small></span></div>`).join('')
+          : '<div class="hint" style="padding:16px">아직 받은 안내가 없습니다.</div>'}`}
+  </div>`;
+}
+
+// root.dart 하단바: 홈 · QR 스캔 · 계정
+function renderTabbar() {
+  const r = route().name;
+  const onAccount = r === 'account';
+  $tabbar.hidden = r === 'scan';
+  $tabbar.innerHTML = `<div>
+    <button class="tab ${onAccount ? '' : 'on'}" data-go="#/">${ic(onAccount ? 'home' : 'home', onAccount ? 'outlined' : 'round')}<span>홈</span></button>
+    <button class="tab-qr" data-go="#/scan" aria-label="QR 스캔"><span>${ic('qr_code_scanner', 'round')}</span></button>
+    <button class="tab ${onAccount ? 'on' : ''}" data-go="#/account">${ic('account_circle', onAccount ? '' : 'outlined')}<span>계정</span></button>
   </div>`;
 }
 
 function render() {
   const r = route();
   const focused = document.activeElement?.id;
-  if (focused === 'ticket' || focused === 'code') return; // 입력 중에는 다시 그리지 않는다 (포커스 유지)
-  $app.innerHTML = r.name === 'entry' ? viewEntry(r) : r.name === 'queue' ? viewQueue() : r.name === 'line' ? viewLine() : viewHome();
+  if (['ticket', 'code', 'scan-code'].includes(focused)) return; // 입력 중에는 다시 그리지 않는다 (포커스 유지)
+  if (r.name === 'scan' && document.getElementById('scanner')) return; // 카메라를 끊지 않게
+  $app.innerHTML = r.name === 'entry' ? viewEntry(r) : r.name === 'queue' ? viewQueue() : r.name === 'line' ? viewLine()
+    : r.name === 'account' ? viewAccount() : r.name === 'scan' ? viewScan() : viewHome();
+  renderTabbar();
   if (r.name === 'entry') updatePreview();
+  if (r.name === 'scan') startScanner();
 }
 
 // ───────── 이벤트 ─────────
 
+// 카드 길게 누르기 → 삭제 (home.dart onLongPress)
+let pressTimer = null, longPressed = false;
+$app.addEventListener('pointerdown', (ev) => {
+  const card = ev.target.closest('[data-card]');
+  if (!card || ev.target.closest('button')) return;
+  longPressed = false;
+  pressTimer = setTimeout(async () => {
+    longPressed = true;
+    const e = eventByCode(card.dataset.card);
+    const id = await dialog(`${e?.title ?? ''} 삭제`, '내 공연 목록에서 지웁니다. QR이나 코드로 다시 추가할 수 있습니다.',
+      [{ label: '취소', id: 'cancel' }, { label: '삭제', id: 'delete', danger: true }]);
+    if (id === 'delete') { forgetEvent(card.dataset.card); render(); }
+  }, 550);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => $app.addEventListener(t, () => clearTimeout(pressTimer)));
+$app.addEventListener('contextmenu', (ev) => { if (ev.target.closest('[data-card]')) ev.preventDefault(); });
+
 $app.addEventListener('click', async (ev) => {
   const t = ev.target.closest('[data-go],[data-action]');
   if (!t) return;
-  if (t.dataset.go) { ev.preventDefault(); go(t.dataset.go); return; }
+  if (longPressed) { longPressed = false; ev.preventDefault(); return; }
+  if (t.dataset.go) { ev.preventDefault(); ev.stopPropagation(); go(t.dataset.go); return; }
   const a = t.dataset.action;
-  if (a === 'forget') {
-    ev.stopPropagation();
-    if (confirm('내 공연 목록에서 지웁니다. QR이나 코드로 다시 추가할 수 있습니다.')) { forgetEvent(t.dataset.code); render(); }
-  } else if (a === 'zone') {
+  if (a === 'zone') {
     entryZone = t.dataset.zone;
     document.querySelectorAll('.chip').forEach((b) => b.classList.toggle('on', b.dataset.zone === entryZone));
     const btn = document.getElementById('confirm');
@@ -594,38 +726,49 @@ $app.addEventListener('click', async (ev) => {
     document.getElementById('ticket-error').innerHTML = '';
     updatePreview();
     document.getElementById('ticket').focus();
+  } else if (a === 'stand-on') {
+    setStanding(true);
   } else if (a === 'stand-off') {
     setStanding(false);
-  } else if (a === 'stand-on') {
-    const c = current();
-    if (!c) return;
-    if (c.e.location) {
-      t.disabled = true;
-      t.textContent = '위치 확인 중…';
-      const denied = await checkLocation(c.e);
-      if (denied) { render(); dialog('공연장에서만 사용할 수 있습니다', denied); return; }
-    }
-    setStanding(true);
   } else if (a === 'notices') {
-    const sheet = document.getElementById('sheet');
-    sheet.innerHTML = viewNotices();
-    sheet.style.alignItems = '';
-    sheet.hidden = false;
+    $sheet.innerHTML = viewNotices();
+    $sheet.hidden = false;
     state.noticesReadAt = Date.now();
     store.set('noticesReadAt', state.noticesReadAt);
   } else if (a === 'only-standing') {
     state.onlyStanding = !state.onlyStanding;
     render();
+    if (!state.onlyStanding) scrollToMine();
   } else if (a === 'refresh-spots') {
     refreshSpots();
+  } else if (a === 'leave') {
+    leaveEvent();
+  } else if (a === 'provider') {
+    dialog('예매처 계정 연결', '예매처 계정 연결은 입장번호 앱에서 할 수 있습니다.');
   }
 });
 
-document.getElementById('sheet').addEventListener('click', (ev) => {
-  if (ev.target.id === 'sheet' || ev.target.closest('[data-action="close-sheet"]')) {
-    document.getElementById('sheet').hidden = true;
+$app.addEventListener('change', (ev) => {
+  if (ev.target.dataset.action === 'stand-switch') {
+    const on = ev.target.checked;
+    ev.target.checked = !on; // 결과는 다시 그릴 때 반영
+    setStanding(on);
+  }
+});
+
+$sheet.addEventListener('click', (ev) => {
+  const d = ev.target.closest('[data-dialog]');
+  if (d && dialogDone) { dialogDone(d.dataset.dialog); return; }
+  if (ev.target === $sheet || ev.target.closest('[data-action="close-sheet"]')) {
+    if (dialogDone) { dialogDone('cancel'); return; }
+    $sheet.hidden = true;
     render();
   }
+});
+
+$tabbar.addEventListener('click', (ev) => {
+  const t = ev.target.closest('[data-go]');
+  if (t) go(t.dataset.go);
 });
 
 $app.addEventListener('input', (ev) => {
@@ -638,6 +781,8 @@ $app.addEventListener('input', (ev) => {
   }
 });
 
+const errorLine = (msg) => `<div class="error">${ic('warning', 'round')}<span>${esc(msg)}</span></div>`;
+
 $app.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const form = ev.target.dataset.form;
@@ -645,35 +790,40 @@ $app.addEventListener('submit', async (ev) => {
     const input = document.getElementById('code');
     const raw = input.value.trim().toUpperCase();
     const err = document.getElementById('code-error');
-    if (!raw) { err.innerHTML = '<div class="error-box">공연 코드를 입력해 주세요.</div>'; return; }
+    if (!raw) { err.innerHTML = errorLine('공연 코드를 입력해 주세요.'); return; }
     let e = eventByCode(raw);
     if (!e) { await loadCatalog(); e = eventByCode(raw); } // 방금 게시된 공연일 수 있다
-    if (!e) { err.innerHTML = `<div class="error-box">공연 코드 '${esc(raw)}' 를 찾을 수 없습니다. 주최 측 안내를 확인해 주세요.</div>`; return; }
+    if (!e) { err.innerHTML = errorLine(`공연 코드 '${raw}' 를 찾을 수 없습니다. 주최 측 안내를 확인해 주세요.`); return; }
     input.value = '';
     input.blur();
-    openEvent(e.code);
+    rememberEvent(e.code);
+    entryZone = null;
+    go('#/e/' + e.code);
+  } else if (form === 'scan') {
+    document.getElementById('scan-code').blur();
+    handleScan(document.getElementById('scan-code').value);
   } else if (form === 'ticket') {
-    const r = route();
-    const e = eventByCode(r.code);
+    const e = eventByCode(route().code);
     const z = zoneOf(e, entryZone);
     const input = document.getElementById('ticket');
     const err = document.getElementById('ticket-error');
-    if (!e || !z || input.readOnly) return;
-    const t = parseTicket(input.value);
-    if (t.error) { err.innerHTML = `<div class="error-box">${esc(t.error)}</div>`; return; }
-    const a = assign(t.value, z);
-    if (a.error) { err.innerHTML = `<div class="error-box">${esc(a.error)}</div>`; return; }
     const btn = document.getElementById('confirm');
+    if (!e || !z || input.readOnly || !btn || btn.disabled) return;
+    const t = parseTicket(input.value);
+    if (t.error) { err.innerHTML = errorLine(t.error); return; }
+    const a = assign(t.value, z);
+    if (a.error) { err.innerHTML = errorLine(a.error); return; }
     if (e.location) {
       btn.disabled = true;
-      btn.textContent = '위치 확인 중…';
+      btn.innerHTML = `${ic('check')}<span>위치 확인 중…</span>`;
       const denied = await checkLocation(e);
       btn.disabled = false;
-      btn.textContent = '✓ 확인';
-      if (denied) { err.innerHTML = `<div class="error-box">${esc(denied)}</div>`; return; }
+      btn.innerHTML = `${ic('check')}<span>확인</span>`;
+      if (denied) { err.innerHTML = errorLine(denied); return; }
     }
-    const keepStanding = state.participant?.code === e.code && state.participant.zone === z.name && state.participant.queue === a.queue.name && state.participant.ticket === t.value && state.participant.standing;
-    state.participant = { code: e.code, zone: z.name, queue: a.queue.name, ticket: t.value, standing: !!keepStanding };
+    const old = state.participant;
+    const same = old?.code === e.code && old.zone === z.name && old.queue === a.queue.name && old.ticket === t.value;
+    state.participant = { code: e.code, zone: z.name, queue: a.queue.name, ticket: t.value, standing: same ? !!old.standing : false };
     rememberEvent(e.code);
     saveParticipant();
     input.blur();
@@ -681,28 +831,34 @@ $app.addEventListener('submit', async (ev) => {
   }
 });
 
+/** 공연 열기: 이미 번호를 넣었으면 대기줄 확인, 아니면 번호 입력 (root.dart openEvent) */
 function openEvent(code) {
   rememberEvent(code);
   entryZone = null;
-  go(state.participant?.code === code ? '#/q' : '#/e/' + code);
+  go(state.participant?.code === code && current() ? '#/q' : '#/e/' + code);
+}
+
+function scrollToMine() {
+  setTimeout(() => document.getElementById('my-slot')?.scrollIntoView({ block: 'center' }), 30);
 }
 
 window.addEventListener('hashchange', () => {
   const r = route();
   if (r.name !== 'entry') entryZone = null;
+  if (r.name !== 'scan') stopScanner();
   clearInterval(spotPoll);
   spotPoll = null;
   if (r.name === 'line') { refreshSpots(); spotPoll = setInterval(refreshSpots, 15e3); }
   document.activeElement?.blur?.();
   render();
   window.scrollTo(0, 0);
-  if (r.name === 'line') setTimeout(() => document.getElementById('my-slot')?.scrollIntoView({ block: 'center' }), 50);
+  if (r.name === 'line') scrollToMine();
 });
 
-// 줄서기 시작까지 남은 시간 갱신
+// 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
 setInterval(() => {
   const c = current();
-  if (c?.e.entryAt && !c.p.standing && c.e.entryAt > Date.now() - 2000 && route().name !== 'entry') render();
+  if (c?.e.entryAt && !c.p.standing && c.e.entryAt > Date.now() - 2000 && ['home', 'queue', 'line'].includes(route().name)) render();
 }, 1000);
 
 document.addEventListener('visibilitychange', () => {
@@ -715,15 +871,16 @@ document.addEventListener('visibilitychange', () => {
   render();
   await loadCatalog();
   // 참가 QR: …/join?code=XXXXXX → 그 공연으로 바로
-  const code = new URLSearchParams(location.search).get('code');
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
   if (code) {
-    const base = location.pathname.replace(/join(\.html)?\/?$/, '');
-    history.replaceState(null, '', base);
+    const keep = location.hostname === 'localhost' && params.get('catalog') ? '?catalog=' + encodeURIComponent(params.get('catalog')) : '';
+    history.replaceState(null, '', location.pathname.replace(/join(\.html)?\/?$/, '') + keep);
     const e = eventByCode(code);
-    if (e) { openEvent(e.code); } else { render(); dialog('참가할 수 없습니다', 'QR 링크의 공연을 찾을 수 없습니다. 이미 끝난 공연이거나 주최 측이 아직 게시하지 않았을 수 있습니다.'); }
+    if (e) openEvent(e.code);
+    else { render(); dialog('참가할 수 없습니다', 'QR 링크의 공연을 찾을 수 없습니다.'); }
   }
   syncSpot();
   syncNotices();
-  render();
   window.dispatchEvent(new HashChangeEvent('hashchange'));
 })();
