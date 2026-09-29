@@ -392,13 +392,13 @@ function viewHome() {
           ${e.venue ? `<div class="t-sub">${esc(e.venue)}</div>` : ''}
         </div>
         <div class="t-date"><small>${e.date.getMonth() + 1}월</small><b>${e.date.getDate()}</b></div>
-        <button class="ticket-x" data-action="forget" data-code="${e.code}" aria-label="내 티켓에서 지우기">✕</button>
+        <button class="ticket-x" data-action="forget" data-code="${e.code}" aria-label="내 공연에서 지우기">✕</button>
       </div>`;
     const stub = joined
       ? `<div class="fields">
           <div><div class="f-label">구역</div><div class="f-value">${esc(c.z.name)}</div></div>
           <div><div class="f-label">대기줄</div><div class="f-value">${esc(c.q.name)}</div></div>
-          <div><div class="f-label">입장번호</div><div class="f-big gradient-text">${c.p.ticket}번</div></div>
+          <div><div class="f-label">입장번호</div><div class="f-big">${c.p.ticket}번</div></div>
         </div>
         ${standingButton(c)}
         <div class="row-links">
@@ -408,7 +408,7 @@ function viewHome() {
       : `<button class="btn-grad" style="width:100%;margin-top:6px" data-go="#/e/${e.code}">번호 입력 →</button>`;
     return `<section class="ticket">
       <div class="ticket-head ticket-tap" data-go="${joined ? '#/q' : '#/e/' + e.code}">${head}</div>
-      <div class="ticket-cut"><i></i></div>
+      <div class="ticket-cut"></div>
       <div class="ticket-stub">${stub}</div>
     </section>`;
   }).join('');
@@ -417,14 +417,13 @@ function viewHome() {
     <div class="topbar"><span></span>
       <button class="icon-btn" data-action="notices" aria-label="알림">🔔${unreadCount() ? '<span class="badge-dot"></span>' : ''}</button>
     </div>
-    <div class="eyebrow">STANDING</div>
-    <div class="brand gradient-text">입장번호</div>
+    <div class="brand">입장번호</div>
     <form class="code-row" data-form="code">
       <label class="field"><span class="hint">🔍</span><input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="공연 코드 입력"></label>
       <button class="btn-grad" type="submit">추가</button>
     </form>
     <div id="code-error"></div>
-    <div class="section-title">내 티켓 ${mine.length ? `<span class="pill pink">${mine.length}</span>` : ''}</div>
+    <div class="section-title">내 공연</div>
     ${tickets || `<div class="empty"><div class="orb">🎫</div><h3>아직 공연이 없어요</h3><div class="hint">공연장 QR을 스캔하거나 공연 코드를 입력하면<br>여기에 공연이 추가됩니다.</div></div>`}
     <div class="app-note">📱 앱을 설치하면 블루투스로 앞뒤 번호 관객을 찾고, 현장 안내를 알림으로 받을 수 있어요.</div>`;
 }
@@ -482,11 +481,11 @@ function viewQueue() {
   return `
     <div class="topbar"><button class="icon-btn" data-go="#/" aria-label="뒤로">‹</button><h1>대기줄 확인</h1><span style="width:44px"></span></div>
     <section class="ticket">
-      <div class="ticket-head center"><div class="t-sub">${esc(c.e.title)}</div><div style="font-size:34px;font-weight:900;margin-top:4px">${esc(c.z.name)}</div></div>
-      <div class="ticket-cut"><i></i></div>
+      <div class="ticket-head center"><div class="t-sub">${esc(c.e.title)}</div><div style="font-size:30px;font-weight:700;margin-top:4px">${esc(c.z.name)}</div></div>
+      <div class="ticket-cut"></div>
       <div class="ticket-stub">
         <div class="center f-label" style="margin-top:4px">당신의 번호</div>
-        <div class="big-number gradient-text">${c.p.ticket}</div>
+        <div class="big-number">${c.p.ticket}</div>
         <div class="info-row"><span>대기줄</span><span>${esc(c.q.name)}</span></div>
         <div class="info-row"><span>입장번호</span><span>${rangeText(c.q)}</span></div>
       </div>
@@ -540,7 +539,7 @@ function viewLine() {
 
   return `
     <div class="topbar"><button class="icon-btn" data-go="#/q" aria-label="뒤로">‹</button><h1>줄 현황</h1>
-      <span><button class="icon-btn" data-action="only-standing" aria-label="서 있는 사람만 보기" style="display:inline-grid;${state.onlyStanding ? 'color:var(--pink)' : ''}">👤</button><button class="icon-btn" data-action="refresh-spots" aria-label="새로고침" style="display:inline-grid">↻</button></span>
+      <span><button class="icon-btn" data-action="only-standing" aria-label="서 있는 사람만 보기" style="display:inline-grid;${state.onlyStanding ? 'color:var(--accent)' : ''}">👤</button><button class="icon-btn" data-action="refresh-spots" aria-label="새로고침" style="display:inline-grid">↻</button></span>
     </div>
     <div style="font-size:20px;font-weight:700">${esc(z.name)} · ${esc(q.name)}</div>
     <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standing.size}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
@@ -586,7 +585,7 @@ $app.addEventListener('click', async (ev) => {
   const a = t.dataset.action;
   if (a === 'forget') {
     ev.stopPropagation();
-    if (confirm('내 티켓에서 지웁니다. QR이나 코드로 다시 추가할 수 있습니다.')) { forgetEvent(t.dataset.code); render(); }
+    if (confirm('내 공연 목록에서 지웁니다. QR이나 코드로 다시 추가할 수 있습니다.')) { forgetEvent(t.dataset.code); render(); }
   } else if (a === 'zone') {
     entryZone = t.dataset.zone;
     document.querySelectorAll('.chip').forEach((b) => b.classList.toggle('on', b.dataset.zone === entryZone));
