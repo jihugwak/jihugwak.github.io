@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["YVK56NV787.com.standing.StandingQueue"],
+        "components": [
+          { "/": "/standing/join*", "comment": "참가 QR → 관객 앱" }
+        ]
+      }
+    ]
+  }
+}

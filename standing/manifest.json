@@ -1,0 +1,35 @@
+{
+    "name": "입장번호",
+    "short_name": "입장번호",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#2F6BFF",
+    "theme_color": "#2F6BFF",
+    "description": "스탠딩 공연 입장번호 대기줄 확인",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

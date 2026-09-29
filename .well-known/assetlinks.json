@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.standing.standingqueue",
+      "sha256_cert_fingerprints": [
+        "99:B8:14:49:9C:28:87:7C:46:DE:DC:2B:5A:EE:31:3B:26:8E:28:99:C1:E2:E4:FE:9E:E6:F4:97:73:67:03:7F"
+      ]
+    }
+  }
+]
