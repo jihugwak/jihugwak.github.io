@@ -82,15 +82,23 @@ function parseMap(raw) {
   return slots.length ? { cols: +raw.cols || 16, slots } : null;
 }
 
+/** "location": {"lat", "lng", "radius"} → 없거나 잘못되면 null */
+function parseLocation(l) {
+  return l && typeof l.lat === 'number' && typeof l.lng === 'number' ? { lat: l.lat, lng: l.lng, radius: l.radius || 300 } : null;
+}
+
 function parseCatalog(text) {
   const root = JSON.parse(text);
   const events = [];
   for (const e of root.events || []) {
     const code = String(e.code || '').trim().toUpperCase();
     if (!/^[A-Z0-9]{6}$/.test(code) || events.some((x) => x.code === code)) continue;
+    const eventLoc = parseLocation(e.location);
     const zones = (e.zones || []).map((z) => {
+      // 구역 위치 제한: 생략 = 공연 위치, "none" = 제한 없음, 좌표 = 이 구역만 따로
+      const location = z.location == null ? eventLoc : z.location === 'none' ? null : parseLocation(z.location);
       // 지정석: 번호·대기줄 없이 구역만
-      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [] };
+      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location };
       const zoneMap = parseMap(z.map);
       const specs = Array.isArray(z.queues)
         ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i, map: parseMap(q.map) }))
@@ -105,13 +113,11 @@ function parseCatalog(text) {
           }
         }
       }
-      return { name: z.name || '', min: z.min, max: z.max, queues: specs };
+      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location };
     });
-    const loc = e.location && typeof e.location.lat === 'number' && typeof e.location.lng === 'number'
-      ? { lat: e.location.lat, lng: e.location.lng, radius: e.location.radius || 300 } : null;
     events.push({
       code, title: e.title || '', date: parseDate(e.date), entryAt: e.entry ? parseDate(e.entry) : null,
-      venue: e.venue || '', zones, location: loc,
+      venue: e.venue || '', zones, location: eventLoc,
     });
   }
   const notices = (root.notices || []).map((n) => ({
@@ -181,9 +187,8 @@ function distance(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/** 통과면 null, 아니면 관객에게 보여 줄 메시지 */
-function checkLocation(event) {
-  const loc = event.location;
+/** 구역에 적용되는 위치(zone.location)로 확인. 통과면 null, 아니면 관객에게 보여 줄 메시지 */
+function checkLocation(loc) {
   if (!loc) return Promise.resolve(null);
   if (!navigator.geolocation) return Promise.resolve('이 브라우저에서는 위치를 확인할 수 없습니다.');
   return new Promise((resolve) => {
@@ -340,10 +345,10 @@ async function setStanding(on) {
   if (!c) return;
   if (on) {
     if (c.e.entryAt && c.e.entryAt > Date.now()) return;
-    if (c.e.location) {
+    if (c.z.location) {
       state.checking = true;
       render();
-      const denied = await checkLocation(c.e);
+      const denied = await checkLocation(c.z.location);
       state.checking = false;
       if (denied) { render(); dialog('공연장에서만 사용할 수 있습니다', denied); return; }
     }
@@ -495,7 +500,7 @@ function viewEntry(r) {
       </div>
       <div id="ticket-error"></div>
       <div style="height:24px"></div>
-      ${e.location ? `<div class="note">${ic('location_on', 'outlined')}<span>공연장 반경 ${Math.round(e.location.radius)}m 안에서만 사용할 수 있습니다.</span></div><div style="height:8px"></div>` : ''}
+      <div id="loc-note">${locNote(zoneOf(e, entryZone))}</div>
       ${locked
         ? `<div class="note">${ic('lock', 'outlined')}<span>확인한 ${seated ? '구역' : '번호'}으로 고정되어 있습니다. 바꾸려면 [수정]을 누르세요.</span></div>
            <div style="height:8px"></div>
@@ -504,6 +509,11 @@ function viewEntry(r) {
            <button type="button" class="text-btn" data-go="#/q">${ic('confirmation_number', 'outlined')}${seated ? '입장 안내 보기' : '내 대기줄 보기'}</button>`
         : `<button class="filled big" id="confirm" ${entryZone ? '' : 'disabled'}>${ic('check')}<span>확인</span></button>`}
     </form>`;
+}
+
+/** 번호 입력 화면의 위치 제한 안내 (고른 구역 기준) */
+function locNote(z) {
+  return z?.location ? `<div class="note">${ic('location_on', 'outlined')}<span>공연장 반경 ${Math.round(z.location.radius)}m 안에서만 사용할 수 있습니다.</span></div><div style="height:8px"></div>` : '';
 }
 
 function updatePreview() {
@@ -778,6 +788,7 @@ $app.addEventListener('click', async (ev) => {
     const seated = !!zoneOf(eventByCode(route().code || ''), entryZone)?.seated;
     document.getElementById('ticket-block').hidden = seated;
     document.getElementById('seated-note').hidden = !seated;
+    document.getElementById('loc-note').innerHTML = locNote(zoneOf(eventByCode(route().code || ''), entryZone));
     document.querySelector('.appbar h1').textContent = seated ? '구역 선택' : '번호 입력';
     updatePreview();
     if (!seated) document.getElementById('ticket').focus();
@@ -869,10 +880,10 @@ $app.addEventListener('submit', async (ev) => {
     if (t.error) { err.innerHTML = errorLine(t.error); return; }
     const a = z.seated ? {} : assign(t.value, z);
     if (a.error) { err.innerHTML = errorLine(a.error); return; }
-    if (e.location) {
+    if (z.location) {
       btn.disabled = true;
       btn.innerHTML = `${ic('check')}<span>위치 확인 중…</span>`;
-      const denied = await checkLocation(e);
+      const denied = await checkLocation(z.location);
       btn.disabled = false;
       btn.innerHTML = `${ic('check')}<span>확인</span>`;
       if (denied) { err.innerHTML = errorLine(denied); return; }
