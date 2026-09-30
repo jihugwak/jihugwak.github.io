@@ -207,3 +207,15 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 
 .toast { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); z-index: 30; max-width: 536px; margin: 0 auto; padding: 12px 16px; border-radius: 16px; background: var(--card); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); display: flex; gap: 12px; align-items: flex-start; }
 .toast b { display: block; font-size: 15px; }
+
+/* 입장 시작/마감 띠 (home.dart EntryStateBanner) */
+.entry-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px; }
+.entry-banner.open { --c: var(--accent); }
+.entry-banner.closed { --c: var(--red); }
+.entry-banner { background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+.entry-banner > .mi { color: var(--c); font-size: 22px; }
+.entry-banner .t { flex: 1; min-width: 0; }
+.entry-banner .h { display: flex; gap: 8px; align-items: baseline; }
+.entry-banner .h b { flex: 1; font-size: 16px; font-weight: 700; color: var(--c); }
+.entry-banner .h .hint { font-size: 12px; }
+.entry-banner .m { margin-top: 3px; font-size: 14px; line-height: 1.4; }
