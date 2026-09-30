@@ -424,7 +424,7 @@ function viewHome() {
         <div style="height:10px"></div>
         ${standingToggle(c, true)}
         <div style="height:4px"></div>
-        <div class="links"><button class="text-btn" data-go="#/line">${ic('grid_view', 'round')}줄 현황 보기</button></div>`
+        <div class="links"><button class="text-btn" data-go="#/line">${ic('grid_view', 'round')}내 자리 찾기</button></div>`
       : `<div style="text-align:right"><button class="filled" data-go="#/e/${e.code}">번호 입력</button></div>`}
     </div>`;
   }).join('');
@@ -502,7 +502,7 @@ function viewQueue() {
       <div style="height:24px"></div>
       <div class="card info"><div class="info-row"><span>대기줄</span><span>${esc(c.q.name)}</span></div><div class="info-row"><span>이 줄 번호</span><span>${rangeText(c.q)}</span></div></div>
       <div style="height:12px"></div>
-      <div class="card"><button class="tile two" data-go="#/line"><span class="tile-icon">${ic('grid_view', 'round')}</span><span class="t"><b>줄 현황 보기</b><small>와 있는 번호를 보고 내 자리 찾기</small></span>${ic('chevron_right', '', 24).replace('class="mi', 'class="chev mi')}</button></div>
+      <div class="card"><button class="tile two" data-go="#/line"><span class="tile-icon">${ic('grid_view', 'round')}</span><span class="t"><b>내 자리 찾기</b><small>줄 모양에서 내 칸 보기</small></span>${ic('chevron_right', '', 24).replace('class="mi', 'class="chev mi')}</button></div>
     </div>
     <div class="bottom-actions">${standingToggle(c)}<button class="text-btn" data-go="#/e/${c.e.code}/edit">번호 변경</button></div>`;
 }
@@ -510,7 +510,7 @@ function viewQueue() {
 // line_map.dart
 function viewLine() {
   const c = current();
-  if (!c) return `${appbar('줄 현황', { back: '#/q' })}<div class="center" style="padding-top:40vh">참가 정보가 없습니다</div>`;
+  if (!c) return `${appbar('내 자리 찾기', { back: '#/q' })}<div class="center" style="padding-top:40vh">참가 정보가 없습니다</div>`;
   const { p, z, q } = c;
   const standing = new Set(state.spots.filter((s) => s.standing).map((s) => s.n));
   if (p.standing) standing.add(p.ticket);
@@ -546,7 +546,7 @@ function viewLine() {
 
   const actions = `<button class="icon-btn ${state.onlyStanding ? 'on' : ''}" data-action="only-standing" aria-label="${state.onlyStanding ? '전체 칸 보기' : '서 있는 사람만 보기'}">${ic(state.onlyStanding ? 'person' : 'person_outline')}</button>
     <button class="icon-btn" data-action="refresh-spots" aria-label="새로고침">${state.loadingSpots ? '<span class="hint" style="font-size:12px">…</span>' : ic('refresh')}</button>`;
-  return `<header class="appbar wide"><button class="icon-btn lead" data-go="#/q" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button><h1>줄 현황</h1><div class="acts">${actions}</div></header>
+  return `<header class="appbar wide"><button class="icon-btn lead" data-go="#/q" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button><h1>내 자리 찾기</h1><div class="acts">${actions}</div></header>
     <div class="line-head">
       <h2>${esc(z.name)} · ${esc(q.name)}</h2>
       <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standing.size}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
