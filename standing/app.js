@@ -94,9 +94,12 @@ function parseCatalog(text) {
     const code = String(e.code || '').trim().toUpperCase();
     if (!/^[A-Z0-9]{6}$/.test(code) || events.some((x) => x.code === code)) continue;
     const eventLoc = parseLocation(e.location);
+    const eventEntry = e.entry ? parseDate(e.entry) : null;
     const zones = (e.zones || []).map((z) => {
       // 구역 위치 제한: 생략 = 공연 위치, "none" = 제한 없음, 좌표 = 이 구역만 따로
       const location = z.location == null ? eventLoc : z.location === 'none' ? null : parseLocation(z.location);
+      // 줄서기 시작: 생략 = 공연 시각, "none" = 언제든, 시각 = 이 구역만 따로 (지정석은 줄이 없다)
+      const entryAt = z.entry == null ? eventEntry : z.entry === 'none' ? null : parseDate(z.entry);
       // 지정석: 번호·대기줄 없이 구역만
       if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location };
       const zoneMap = parseMap(z.map);
@@ -113,10 +116,10 @@ function parseCatalog(text) {
           }
         }
       }
-      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location };
+      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location, entryAt };
     });
     events.push({
-      code, title: e.title || '', date: parseDate(e.date), entryAt: e.entry ? parseDate(e.entry) : null,
+      code, title: e.title || '', date: parseDate(e.date), entryAt: eventEntry,
       venue: e.venue || '', zones, location: eventLoc,
     });
   }
@@ -344,7 +347,7 @@ async function setStanding(on) {
   const c = current();
   if (!c) return;
   if (on) {
-    if (c.e.entryAt && c.e.entryAt > Date.now()) return;
+    if (c.z.entryAt && c.z.entryAt > Date.now()) return;
     if (c.z.location) {
       state.checking = true;
       render();
@@ -402,10 +405,10 @@ let dialogDone = null;
 /** 줄에 섰어요 토글 (StandingToggle). compact 는 카드 안 48 높이 */
 function standingToggle(c, compact = false) {
   const cls = `filled big${compact ? ' compact' : ''}`;
-  const left = c.e.entryAt ? c.e.entryAt.getTime() - Date.now() : 0;
+  const left = c.z.entryAt ? c.z.entryAt.getTime() - Date.now() : 0; // 구역마다 다를 수 있다
   if (!c.p.standing && left > 0) {
     return `<button class="${cls}" disabled>${ic('schedule')}<span>줄서기 ${remainingText(left)} 뒤 시작</span></button>
-      <div class="hint center" style="font-size:12px;margin-top:4px">${koreanShort(c.e.entryAt)} 부터 줄설 수 있습니다.</div>`;
+      <div class="hint center" style="font-size:12px;margin-top:4px">${koreanShort(c.z.entryAt)} 부터 줄설 수 있습니다.</div>`;
   }
   if (state.checking) return `<button class="${cls}" disabled>${ic('person_pin_circle')}<span>위치 확인 중…</span></button>`;
   return c.p.standing
@@ -929,7 +932,7 @@ window.addEventListener('hashchange', () => {
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
 setInterval(() => {
   const c = current();
-  if (c?.e.entryAt && !c.p.standing && c.e.entryAt > Date.now() - 2000 && ['home', 'queue', 'line'].includes(route().name)) render();
+  if (c?.z.entryAt && !c.p.standing && c.z.entryAt > Date.now() - 2000 && ['home', 'queue', 'line'].includes(route().name)) render();
 }, 1000);
 
 document.addEventListener('visibilitychange', () => {
