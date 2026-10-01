@@ -100,8 +100,10 @@ function parseCatalog(text) {
       const location = z.location == null ? eventLoc : z.location === 'none' ? null : parseLocation(z.location);
       // 줄서기 시작: 생략 = 공연 시각, "none" = 언제든, 시각 = 이 구역만 따로 (지정석은 줄이 없다)
       const entryAt = z.entry == null ? eventEntry : z.entry === 'none' ? null : parseDate(z.entry);
+      // 입장 시작 예정 (선택) — 스태프가 현장에서 늦추거나 당긴다
+      const admission = z.admission ? parseDate(z.admission) : null;
       // 지정석: 번호·대기줄 없이 구역만
-      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location };
+      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location: null, admission };
       const zoneMap = parseMap(z.map);
       const specs = Array.isArray(z.queues)
         ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i, map: parseMap(q.map) }))
@@ -116,7 +118,7 @@ function parseCatalog(text) {
           }
         }
       }
-      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location, entryAt };
+      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location, entryAt, admission };
     });
     events.push({
       code, title: e.title || '', date: parseDate(e.date), entryAt: eventEntry,
@@ -251,6 +253,7 @@ const KINDS = {
   moveForward: { title: '앞으로 이동', message: '앞 공간이 비었습니다. 앞으로 이동해 주세요.', icon: 'arrow_circle_right', color: 'var(--accent)' },
   entryReady: { title: '입장 준비', message: '곧 입장합니다. 티켓과 신분증을 준비해 주세요.', icon: 'meeting_room', color: 'var(--accent)' },
   entryOpen: { title: '입장 시작', message: '입장이 시작되었습니다. 티켓을 준비하고 안내에 따라 입장해 주세요.', icon: 'login', color: 'var(--accent)' },
+  entryTime: { title: '입장 시간 변경', message: '', icon: 'more_time', color: 'var(--accent)' },
   entryClosed: { title: '입장 마감', message: '입장이 마감되어 더 이상 입장할 수 없습니다.', icon: 'block', color: 'var(--red)' },
   info: { title: '안내', message: '', icon: 'campaign', color: 'var(--accent)' },
 };
@@ -284,10 +287,27 @@ const myNotices = () => {
 // 내 대기줄의 현재 입장 상태 = 입장 시작/마감 중 가장 최근 것 (없으면 입장 전)
 const myEntryState = () => myNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed') || null;
 
-// home.dart EntryStateBanner
+// 내 구역 입장 예정 시각(ms): 스태프가 조정한 것(가장 최근 입장 시간 변경) > 관리자가 정한 시각
+function myEntryStart() {
+  const c = current();
+  if (!c) return null;
+  const t = myNotices().find((n) => n.kind === 'entryTime' && n.entryAt);
+  return t ? t.entryAt : c.z.admission ? c.z.admission.getTime() : null;
+}
+
+// home.dart EntryCountdown: "입장까지 1시간 23분 · 오후 6:00 입장 예정"
+function entryCountdown() {
+  const at = myEntryStart();
+  if (!at) return '';
+  const left = at - Date.now();
+  const big = left < 60e3 ? '곧 입장이 시작됩니다' : `입장까지 ${remainingText(left)}`;
+  return `<div class="entry-countdown">${ic('schedule')}<b>${big}</b><span class="hint">${timeShort(new Date(at))} 입장 예정</span></div>`;
+}
+
+// home.dart EntryStateBanner (입장 전이면 남은 시간)
 function entryBanner() {
   const n = myEntryState();
-  if (!n) return '';
+  if (!n) return entryCountdown();
   const open = n.kind === 'entryOpen';
   const body = open ? n.message : (n.message === KINDS.entryClosed.message ? '더 이상 입장할 수 없습니다.' : n.message);
   return `<div class="entry-banner ${open ? 'open' : 'closed'}">${ic(kind(n.kind).icon)}
@@ -308,6 +328,7 @@ async function syncNotices() {
   const fromRow = (r) => ({
     id: r.id, code: String(r.event_code).toUpperCase(), zone: r.zone, queue: r.queue, min: r.min_number, max: r.max_number,
     kind: r.kind, message: r.message || '', at: new Date(r.created_at).getTime(),
+    entryAt: r.entry_at ? new Date(r.entry_at).getTime() : null,
   });
   const since = new Date(Date.now() - 6 * 3600e3).toISOString();
   const { data } = await db.from('notices').select().eq('event_code', code).gte('created_at', since).order('created_at', { ascending: false }).limit(100);
@@ -559,7 +580,7 @@ function viewSeated(c) {
       <div class="center" style="font-size:40px;font-weight:800;line-height:1.2">${esc(c.z.name)}</div>
       <div class="center hint" style="font-size:15px;margin-top:4px">지정석</div>
       <div style="height:24px"></div>
-      ${entered ? '' : `<div class="card"><div class="tile two"><span class="tile-icon">${ic('notifications_active', 'outlined')}</span><span class="t"><b>입장 전입니다</b><small>입장이 시작되면 이 화면과 알림으로 알려 드립니다.</small></span></div></div>`}
+      ${entered || myEntryStart() ? '' : `<div class="card"><div class="tile two"><span class="tile-icon">${ic('notifications_active', 'outlined')}</span><span class="t"><b>입장 전입니다</b><small>입장이 시작되면 이 화면과 알림으로 알려 드립니다.</small></span></div></div>`}
     </div>
     <div class="bottom-actions"><button class="text-btn" data-go="#/e/${c.e.code}/edit">구역 변경</button></div>`;
 }
@@ -921,6 +942,11 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
   if (r.name === 'line') scrollToMine();
 });
+
+// 입장까지 남은 시간 갱신 (30초마다)
+setInterval(() => {
+  if (!myEntryState() && myEntryStart() && ['home', 'queue'].includes(route().name)) render();
+}, 30e3);
 
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
 setInterval(() => {

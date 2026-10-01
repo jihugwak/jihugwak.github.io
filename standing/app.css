@@ -219,3 +219,10 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-banner .h b { flex: 1; font-size: 16px; font-weight: 700; color: var(--c); }
 .entry-banner .h .hint { font-size: 12px; }
 .entry-banner .m { margin-top: 3px; font-size: 14px; line-height: 1.4; }
+
+/* 입장까지 남은 시간 (home.dart EntryCountdown) */
+.entry-countdown { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.entry-countdown .mi { font-size: 18px; }
+.entry-countdown b { flex: 1; font-size: 15px; font-weight: 700; }
+.entry-countdown .hint { font-size: 12px; }
