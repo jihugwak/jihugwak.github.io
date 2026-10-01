@@ -503,7 +503,6 @@ function viewEntry(r) {
       </div>
       <div id="ticket-error"></div>
       <div style="height:24px"></div>
-      <div id="loc-note">${locNote(zoneOf(e, entryZone))}</div>
       ${locked
         ? `<div class="note">${ic('lock', 'outlined')}<span>확인한 ${seated ? '구역' : '번호'}으로 고정되어 있습니다. 바꾸려면 [수정]을 누르세요.</span></div>
            <div style="height:8px"></div>
@@ -512,11 +511,6 @@ function viewEntry(r) {
            <button type="button" class="text-btn" data-go="#/q">${ic('confirmation_number', 'outlined')}${seated ? '입장 안내 보기' : '내 대기줄 보기'}</button>`
         : `<button class="filled big" id="confirm" ${entryZone ? '' : 'disabled'}>${ic('check')}<span>확인</span></button>`}
     </form>`;
-}
-
-/** 번호 입력 화면의 위치 제한 안내 (고른 구역 기준) */
-function locNote(z) {
-  return z?.location ? `<div class="note">${ic('location_on', 'outlined')}<span>공연장 반경 ${Math.round(z.location.radius)}m 안에서만 사용할 수 있습니다.</span></div><div style="height:8px"></div>` : '';
 }
 
 function updatePreview() {
@@ -791,7 +785,6 @@ $app.addEventListener('click', async (ev) => {
     const seated = !!zoneOf(eventByCode(route().code || ''), entryZone)?.seated;
     document.getElementById('ticket-block').hidden = seated;
     document.getElementById('seated-note').hidden = !seated;
-    document.getElementById('loc-note').innerHTML = locNote(zoneOf(eventByCode(route().code || ''), entryZone));
     document.querySelector('.appbar h1').textContent = seated ? '구역 선택' : '번호 입력';
     updatePreview();
     if (!seated) document.getElementById('ticket').focus();
