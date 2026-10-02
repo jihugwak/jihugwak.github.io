@@ -637,7 +637,8 @@ function viewLine() {
   if (!c?.q) return `${appbar('내 자리 찾기', { back: '#/q' })}<div class="center" style="padding-top:40vh">참가 정보가 없습니다</div>`;
   const { p, z, q } = c;
   const standing = new Set(state.spots.filter((s) => s.standing).map((s) => s.n));
-  if (p.standing) standing.add(p.ticket);
+  // 내 칸은 이 기기의 [줄에 섰어요] 상태를 따른다 (나온 직후 서버 줄 현황이 아직 '서 있음'이어도)
+  if (p.standing) standing.add(p.ticket); else standing.delete(p.ticket);
   const isStand = (n) => (n === p.ticket ? p.standing : standing.has(n));
   const total = q.max - q.min + 1;
   const drawn = (q.map?.slots || []).filter((s) => s.n >= q.min && s.n <= q.max);
