@@ -670,8 +670,8 @@ function viewLine() {
   const lineStanding = lineSorted.filter(isStand).length;
   const switches = myLine ? `
       <div class="line-card"><span class="ico">${ic(byRows ? 'table_rows' : 'view_week', 'round')}</span><div>
-        <b>내 줄: ${byRows ? '앞에서' : '왼쪽에서'} ${lineNo}번째 ${byRows ? '가로줄' : '세로줄'} · ${lineNums.size}칸</b>
-        <span class="hint">${myRank >= 0 ? `이 줄 ${myRank + 1}번째 · ` : ''}서 있는 사람 ${lineStanding}명</span></div></div>` : '';
+        <small>내 줄</small><b>${byRows ? '앞에서' : '왼쪽에서'} ${lineNo}번째 ${byRows ? '가로줄' : '세로줄'}</b>
+        <span class="hint">${lineNums.size}칸${myRank >= 0 ? ` · 이 줄 ${myRank + 1}번째` : ''} · 서 있는 사람 ${lineStanding}명</span></div></div>` : '';
   // 내 줄 확대의 큰 칸 / 옆 줄 반쪽 칸
   const bigSlot = (n, front = frontN, back = backN) => {
     const mine = n === p.ticket, st = isStand(n);

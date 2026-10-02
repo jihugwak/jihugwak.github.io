@@ -196,6 +196,7 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .line-card .ico { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--accent); color: #fff; }
 .line-card .ico .mi { font-size: 20px; }
 .line-card b { display: block; font-size: 15px; color: var(--accent); }
+.line-card small { display: block; font-size: 12px; font-weight: 600; color: var(--accent); }
 .line-card .hint { font-size: 13px; }
 .fslot { position: relative; display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 14px; border-radius: 14px;
   background: var(--card); border: 1px solid color-mix(in srgb, var(--hint) 18%, transparent); color: inherit; }
