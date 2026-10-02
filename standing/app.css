@@ -48,10 +48,15 @@ input { font: inherit; color: inherit; }
 .appbar h1 { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 600; white-space: nowrap; }
 .appbar .lead { grid-column: 1; justify-self: center; }
 .appbar .acts { grid-column: 3; display: flex; align-items: center; justify-content: flex-end; padding-right: 4px; }
-.appbar.wide { grid-template-columns: 104px 1fr 104px; }
+.appbar.wide { grid-template-columns: 140px 1fr 140px; }
 .icon-btn { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; position: relative; }
 .icon-btn:active { background: rgba(127, 127, 127, 0.15); }
 .icon-btn.on { color: var(--accent); }
+.icon-btn.toggle { flex: none; width: 40px; height: 40px; margin: 0 2px; }
+.icon-btn.sel { background: var(--accent); color: #fff; }
+#snack { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50;
+  padding: 10px 16px; border-radius: 10px; background: #323232; color: #fff; font-size: 14px; white-space: nowrap; }
+#snack[hidden] { display: none; }
 .badge { position: absolute; top: 12px; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: #B3261E; }
 .body { padding: 8px 20px 20px; }
 
@@ -178,8 +183,45 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .slot.mine.stand { background: var(--orange); color: #000; }
 .tag { font-size: 13px; color: var(--hint); }
 .tag.mine { color: var(--orange); font-weight: 700; }
-.map-row { display: grid; padding: 3px 16px; }
-.map-row > div { padding: 0 2px; }
+.map-row { display: grid; padding: 0 16px; }
+.map-row > div { padding: 3px 2px; }
+.map-row.my-line, .map-row > .my-line { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.map-row .dim { opacity: 0.3; }
+.seg { display: flex; margin-top: 8px; padding: 2px; border-radius: 10px; background: var(--card); }
+.seg button { flex: 1; min-height: 36px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--hint); }
+.seg button.on { background: var(--accent); color: #fff; }
+.line-pick { margin-top: 10px; font-size: 15px; font-weight: 700; color: var(--accent); }
+/* 내 줄 확대 (line_map.dart _MyLineCard · _FocusSlot · _PeekSlot) */
+.line-card { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.line-card .ico { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--accent); color: #fff; }
+.line-card .ico .mi { font-size: 20px; }
+.line-card b { display: block; font-size: 15px; color: var(--accent); }
+.line-card .hint { font-size: 13px; }
+.fslot { position: relative; display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 14px; border-radius: 14px;
+  background: var(--card); border: 1px solid color-mix(in srgb, var(--hint) 18%, transparent); color: inherit; }
+.fslot b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.fslot em { font-style: normal; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 20px; background: color-mix(in srgb, var(--hint) 16%, transparent); }
+.fslot.stand { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fslot.stand em { background: rgba(0, 0, 0, 0.18); }
+.fslot.mine { border: 2.5px solid var(--orange); color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--orange) 35%, transparent); }
+.fslot.mine em { background: color-mix(in srgb, var(--orange) 16%, transparent); }
+.fslot.mine.stand { background: var(--orange); color: #000; }
+.fslot.mine.stand em { background: rgba(0, 0, 0, 0.18); }
+.peek { overflow: hidden; display: flex; opacity: 0.3; }
+.peek .slot { flex: none; margin: 0; height: 46px; border-radius: 10px; }
+.fcol-row { display: grid; grid-template-columns: 30px 1fr 30px; gap: 10px; padding: 4px 0; }
+.fcol-row .peek { align-items: center; }
+.fcol-row .peek .slot { width: 66px; }
+.fcol-row .peek.l { justify-content: flex-end; }
+.frow-wrap { overflow-x: auto; padding: 6px 20px; scrollbar-width: none; }
+.frow { display: grid; gap: 8px; min-width: 100%; width: max-content; }
+.frow.bigs { margin: 10px 0; }
+.frow.bigs .fslot { flex-direction: column; justify-content: center; gap: 8px; height: 132px; padding: 0 6px; }
+.frow.bigs .fslot b { font-size: 30px; }
+.frow.bigs .fslot em { background: none; padding: 0; font-size: 13px; }
+.frow.peeks .peek { height: 30px; }
+.frow.peeks .peek .slot { width: 100%; }
+.frow.peeks .peek.t { align-items: flex-end; }
 .map-row .slot { width: auto; height: 34px; margin: 0; border-radius: 8px; font-size: 14px; }
 
 /* 하단 탭바: 아이콘 24 · 글자 11, 가운데 QR 52 원 */
@@ -224,5 +266,18 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-countdown { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 12px; border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .entry-countdown .mi { font-size: 18px; }
-.entry-countdown b { flex: 1; font-size: 15px; font-weight: 700; }
+.entry-countdown b { flex: 1; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .entry-countdown .hint { font-size: 12px; }
+/* 대기줄 확인 화면의 디지털 시계 (home.dart EntryCountdown) */
+.entry-clock { padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, transparent); text-align: center; }
+.entry-clock .lbl { font-size: 13px; font-weight: 600; }
+.entry-clock .digits { display: flex; justify-content: center; align-items: flex-start; margin-top: 8px; }
+.entry-clock .u { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.entry-clock .u + .u { margin-left: 10px; }
+.entry-clock .u b { padding: 2px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text);
+  font-size: 38px; line-height: 1.15; font-weight: 800; font-variant-numeric: tabular-nums; }
+.entry-clock .u small { font-size: 11px; color: var(--hint); }
+.entry-clock i { font-style: normal; font-size: 32px; font-weight: 800; color: var(--text); padding: 0 4px; line-height: 1.4; }
+.entry-clock i.dim { opacity: 0.25; }
+.entry-clock .soon { font-size: 22px; font-weight: 800; color: var(--accent); }
+.entry-clock .sub { margin-top: 10px; font-size: 13px; }

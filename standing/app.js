@@ -45,6 +45,7 @@ const state = {
   spotsError: null,
   loadingSpots: false,
   onlyStanding: false,
+  wholeMap: false,     // 기준 줄이 있을 때 [전체 보기]
   checking: false,     // 위치 확인 중
 };
 store.set('deviceId', state.deviceId);
@@ -79,7 +80,9 @@ function autoSplit(min, max, count) {
 function parseMap(raw) {
   if (!raw || !Array.isArray(raw.slots)) return null;
   const slots = raw.slots.filter((t) => Array.isArray(t) && t.length >= 3).map((t) => ({ x: +t[0], y: +t[1], n: +t[2] }));
-  return slots.length ? { cols: +raw.cols || 16, slots } : null;
+  // 기준 줄: "rows" = 가로줄, "cols" = 세로줄 (관객은 내 번호가 든 줄만 먼저 본다)
+  const axis = raw.axis === 'rows' || raw.axis === 'cols' ? raw.axis : null;
+  return slots.length ? { cols: +raw.cols || 16, slots, axis } : null;
 }
 
 /** "location": {"lat", "lng", "radius"} → 없거나 잘못되면 null */
@@ -164,7 +167,16 @@ function current() {
   const e = eventByCode(p.code), z = zoneOf(e, p.zone);
   if (!e || !z || !!z.seated !== !!p.seated) return null; // 구역 종류가 바뀌면 다시 등록
   if (z.seated) return { p, e, z, q: null };
-  const q = queueOf(z, p.queue);
+  let q = queueOf(z, p.queue);
+  // 관리자가 대기줄 범위·이름을 바꿔 다시 게시했으면 번호로 대기줄을 다시 찾는다 (store.dart _reassignQueue)
+  if (!q || p.ticket < q.min || p.ticket > q.max) {
+    const r = assign(p.ticket, z);
+    if (r.queue) {
+      q = r.queue;
+      p.queue = q.name;
+      saveParticipant();
+    }
+  }
   return q ? { p, e, z, q } : null;
 }
 
@@ -295,19 +307,42 @@ function myEntryStart() {
   return t ? t.entryAt : c.z.admission ? c.z.admission.getTime() : null;
 }
 
-// home.dart EntryCountdown: "입장까지 1시간 23분 · 오후 6:00 입장 예정"
-function entryCountdown() {
+// home.dart EntryCountdown: "입장까지 1시간 23분 05초 · 오후 6:00 입장 예정" — 타이머처럼 1초마다 줄어든다
+const countdownBig = (at) => {
+  const left = at - Date.now();
+  return left < 1000 ? '곧 입장이 시작됩니다' : `입장까지 ${countdownText(left)}`;
+};
+// 화면용 (EntryCountdown compact: false): 디지털 시계처럼 [시간]:[분]:[초] 숫자 칸, 콜론은 1초마다 깜빡인다
+function clockInner(at) {
+  const t = Math.max(0, Math.floor((at - Date.now()) / 1000));
+  if (t < 1) return '<b class="soon">곧 입장이 시작됩니다</b>';
+  const days = Math.floor(t / 86400);
+  const unit = (d, label) => `<span class="u"><b>${d}</b><small>${label}</small></span>`;
+  const colon = `<i class="${t % 2 ? 'dim' : ''}">:</i>`;
+  return `<div class="hint lbl">입장까지</div><div class="digits" aria-label="입장까지 ${countdownText(at - Date.now())}">${days ? unit(days, '일') : ''}${unit(pad(Math.floor((t % 86400) / 3600)), '시간')}${colon}${unit(pad(Math.floor((t % 3600) / 60)), '분')}${colon}${unit(pad(t % 60), '초')}</div>`;
+}
+
+function entryCountdown(big = false) {
   const at = myEntryStart();
   if (!at) return '';
-  const left = at - Date.now();
-  const big = left < 60e3 ? '곧 입장이 시작됩니다' : `입장까지 ${remainingText(left)}`;
-  return `<div class="entry-countdown">${ic('schedule')}<b>${big}</b><span class="hint">${timeShort(new Date(at))} 입장 예정</span></div>`;
+  if (big) return `<div class="entry-clock"><div data-clock="${at}">${clockInner(at)}</div><div class="hint sub">${timeShort(new Date(at))} 입장 예정 · 시작되면 알림으로 알려 드립니다</div></div>`;
+  return `<div class="entry-countdown">${ic('schedule')}<b data-countdown="${at}">${countdownBig(at)}</b><span class="hint">${timeShort(new Date(at))} 입장 예정</span></div>`;
+}
+
+// home.dart countdownText: "2일 3시간 04분 05초" / "1시간 04분 05초" / "4분 05초" / "5초"
+function countdownText(ms) {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(t / 86400), h = Math.floor((t % 86400) / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  if (days) return `${days}일 ${h}시간 ${pad(m)}분 ${pad(sec)}초`;
+  if (h) return `${h}시간 ${pad(m)}분 ${pad(sec)}초`;
+  if (m) return `${m}분 ${pad(sec)}초`;
+  return `${sec}초`;
 }
 
 // home.dart EntryStateBanner (입장 전이면 남은 시간)
-function entryBanner() {
+function entryBanner(big = false) {
   const n = myEntryState();
-  if (!n) return entryCountdown();
+  if (!n) return entryCountdown(big);
   const open = n.kind === 'entryOpen';
   const body = open ? n.message : (n.message === KINDS.entryClosed.message ? '더 이상 입장할 수 없습니다.' : n.message);
   return `<div class="entry-banner ${open ? 'open' : 'closed'}">${ic(kind(n.kind).icon)}
@@ -400,6 +435,17 @@ function remainingText(ms) {
   if (min < 60) return `${min}분`;
   const h = Math.floor(min / 60), m = min % 60;
   return m ? `${h}시간 ${m}분` : `${h}시간`;
+}
+
+/** 화면 아래에 잠깐 뜨는 한 줄 (앱의 SnackBar) */
+let hintTimer = null;
+function hint(text) {
+  let el = document.getElementById('snack');
+  if (!el) { el = document.createElement('div'); el.id = 'snack'; document.body.appendChild(el); }
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { el.hidden = true; }, 1200);
 }
 
 let toastTimer = null;
@@ -554,7 +600,7 @@ function viewQueue() {
   if (!c.q) return viewSeated(c);
   return `${appbar('대기줄 확인', { back: '#/' })}
     <div class="body" style="padding-top:20px">
-      ${entryBanner()}
+      ${entryBanner(true)}
       <div style="height:12px"></div>
       <div class="center hint" style="font-size:15px">${esc(c.e.title)}</div>
       <div class="center" style="font-size:28px;font-weight:700;margin-top:6px">${esc(c.z.name)}</div>
@@ -573,7 +619,7 @@ function viewSeated(c) {
   const entered = myEntryState();
   return `${appbar('입장 안내', { back: '#/' })}
     <div class="body" style="padding-top:20px">
-      ${entryBanner()}
+      ${entryBanner(true)}
       <div style="height:12px"></div>
       <div class="center hint" style="font-size:15px">${esc(c.e.title)}</div>
       <div class="center hint" style="font-size:14px;margin-top:20px">내 구역</div>
@@ -603,10 +649,70 @@ function viewLine() {
       ${n === p.ticket ? '<span class="tag mine">내 번호</span>' : isStand(n) ? '<span class="tag">서 있음</span>' : ''}
     </li>`).join('')}</ul>`;
 
+  // 기준 줄: 내 번호가 든 가로줄(같은 y)/세로줄(같은 x)
+  const byRows = q.map?.axis === 'rows';
+  const mineSlot = q.map?.axis ? drawn.find((s) => s.n === p.ticket) : null;
+  const key = (s) => (byRows ? s.y : s.x);
+  const lineNums = new Set(mineSlot ? drawn.filter((s) => key(s) === key(mineSlot)).map((s) => s.n) : []);
+  const lineNo = mineSlot ? new Set(drawn.filter((s) => key(s) < key(mineSlot)).map(key)).size + 1 : 0;
+  const myLine = lineNums.size > 0 && !state.wholeMap; // [내 줄 보기]
+  // 서 있는 사람만: 내 줄 보기면 내 줄에 선 사람만
+  const standingList = [...standing].filter((n) => !myLine || lineNums.has(n)).sort((a, b) => a - b);
+  // 앱 바의 켜고 끄는 아이콘 (line_map.dart _ToggleIcon): 켜지면 파란 바탕
+  const toggle = (action, icon, on, onLabel, offLabel) =>
+    `<button class="icon-btn toggle${on ? ' sel' : ''}" data-action="${action}" data-v="${on ? '0' : '1'}" data-on="${onLabel}" data-off="${offLabel}" aria-pressed="${on}" aria-label="${on ? onLabel : offLabel}" title="${on ? onLabel : offLabel}">${ic(icon, on ? '' : 'outlined')}</button>`;
+  // 내 줄 안 순서와 앞뒤 사람 (line_map.dart _MyLineCard · 내 앞/내 뒤 꼬리표)
+  const lineSorted = [...lineNums].sort((a, b) => a - b);
+  const myRank = lineSorted.indexOf(p.ticket);
+  const frontN = myRank > 0 ? lineSorted[myRank - 1] : null;
+  const backN = myRank >= 0 && myRank < lineSorted.length - 1 ? lineSorted[myRank + 1] : null;
+  const lineStanding = lineSorted.filter(isStand).length;
+  const switches = myLine ? `
+      <div class="line-card"><span class="ico">${ic(byRows ? 'table_rows' : 'view_week', 'round')}</span><div>
+        <b>내 줄: ${byRows ? '앞에서' : '왼쪽에서'} ${lineNo}번째 ${byRows ? '가로줄' : '세로줄'} · ${lineNums.size}칸</b>
+        <span class="hint">${myRank >= 0 ? `이 줄 ${myRank + 1}번째 · ` : ''}서 있는 사람 ${lineStanding}명</span></div></div>` : '';
+  // 내 줄 확대의 큰 칸 / 옆 줄 반쪽 칸
+  const bigSlot = (n, front = frontN, back = backN) => {
+    const mine = n === p.ticket, st = isStand(n);
+    const tag = mine ? '내 자리' : n === front ? '내 앞' : n === back ? '내 뒤' : st ? '서 있음' : '';
+    return `<div class="fslot${st ? ' stand' : ''}${mine ? ' mine' : ''}"${mine ? ' id="my-slot"' : ''}><b>${n}</b>${tag ? `<em>${tag}</em>` : ''}</div>`;
+  };
+  const at = new Map(drawn.map((s) => [`${s.x},${s.y}`, s.n]));
+  const peek = (x, y, side) => (at.has(`${x},${y}`) ? `<div class="peek ${side}">${slot(at.get(`${x},${y}`)).replace(' id="my-slot"', '')}</div>` : '<div class="peek"></div>');
+  // 내 줄 보기: 내 줄 밖 칸은 흐리게
+  const cell = (n) => (myLine && !lineNums.has(n) ? `<div class="dim">${slot(n)}</div>` : slot(n));
+
   let body;
-  if (state.onlyStanding) {
-    const list = [...standing].sort((a, b) => a - b);
-    body = list.length ? linear(list) : `<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>`;
+  // 내 줄 확대 + 서 있는 사람만: 같은 큰 칸 모양으로, 내 줄에 선 사람만 (세로줄은 위→아래, 가로줄은 옆으로)
+  const si = standingList.indexOf(p.ticket);
+  const bigStand = (n) => bigSlot(n, si > 0 ? standingList[si - 1] : null, si >= 0 ? standingList[si + 1] : null);
+  if (myLine && drawn.length && state.onlyStanding && standingList.length) {
+    body = byRows
+      ? `<div class="frow-wrap"><div class="frow bigs" style="grid-template-columns:repeat(${standingList.length},minmax(84px,1fr))">${standingList.map(bigStand).join('')}</div></div>`
+      : standingList.map((n) => `<div class="fcol-row"><div class="peek"></div>${bigStand(n)}<div class="peek"></div></div>`).join('');
+  } else if (myLine && drawn.length && !state.onlyStanding && !byRows) {
+    // 세로줄 확대: 내 세로줄이 화면 폭을 채우고, 양옆 세로줄은 가장자리에 반쯤만 흐리게
+    const ys = drawn.filter((s) => lineNums.has(s.n)).map((s) => s.y);
+    const rows = [];
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y++) {
+      const n = at.get(`${mineSlot.x},${y}`);
+      rows.push(`<div class="fcol-row">${peek(mineSlot.x - 1, y, 'l')}${n == null ? '<div></div>' : bigSlot(n)}${peek(mineSlot.x + 1, y, 'r')}</div>`);
+    }
+    body = rows.join('');
+  } else if (myLine && drawn.length && !state.onlyStanding) {
+    // 가로줄 확대: 내 가로줄을 크게, 앞뒤 가로줄은 위아래에 반쯤만 (칸이 많으면 옆으로 넘긴다)
+    const xs = drawn.map((s) => s.x), minX = Math.min(...xs), maxX = Math.max(...xs);
+    const y = mineSlot.y, cells = [], top = [], bottom = [];
+    for (let x = minX; x <= maxX; x++) {
+      top.push(peek(x, y - 1, 't'));
+      const n = at.get(`${x},${y}`);
+      cells.push(n == null ? '<div></div>' : bigSlot(n));
+      bottom.push(peek(x, y + 1, 'b'));
+    }
+    const grid = (items, cls) => `<div class="frow ${cls}" style="grid-template-columns:repeat(${maxX - minX + 1},minmax(84px,1fr))">${items.join('')}</div>`;
+    body = `<div class="frow-wrap">${grid(top, 'peeks')}${grid(cells, 'bigs')}${grid(bottom, 'peeks')}</div>`;
+  } else if (state.onlyStanding) {
+    body = standingList.length ? linear(standingList) : `<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>`;
   } else if (drawn.length) {
     // 주최 측이 그린 배치도 그대로 (빈 자리는 빈칸)
     const ys = drawn.map((s) => s.y), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -614,22 +720,23 @@ function viewLine() {
     for (let y = minY; y <= maxY; y++) {
       const byX = new Map(drawn.filter((s) => s.y === y).map((s) => [s.x, s.n]));
       const cells = [];
-      for (let x = 0; x < q.map.cols; x++) cells.push(`<div>${byX.has(x) ? slot(byX.get(x)) : ''}</div>`);
-      rows.push(`<div class="map-row" style="grid-template-columns:repeat(${q.map.cols},1fr)">${cells.join('')}</div>`);
+      // 내 줄 보기: 내 줄에 띠를 깔아 강조
+      for (let x = 0; x < q.map.cols; x++) cells.push(`<div${myLine && !byRows && x === mineSlot.x ? ' class="my-line"' : ''}>${byX.has(x) ? cell(byX.get(x)) : ''}</div>`);
+      rows.push(`<div class="map-row${myLine && byRows && y === mineSlot.y ? ' my-line' : ''}" style="grid-template-columns:repeat(${q.map.cols},1fr)">${cells.join('')}</div>`);
     }
     body = rows.join('');
   } else {
     body = linear(Array.from({ length: total }, (_, i) => q.min + i));
   }
 
-  const actions = `<button class="icon-btn ${state.onlyStanding ? 'on' : ''}" data-action="only-standing" aria-label="${state.onlyStanding ? '전체 칸 보기' : '서 있는 사람만 보기'}">${ic(state.onlyStanding ? 'person' : 'person_outline')}</button>
-    <button class="icon-btn" data-action="refresh-spots" aria-label="새로고침">${state.loadingSpots ? '<span class="hint" style="font-size:12px">…</span>' : ic('refresh')}</button>`;
+  const actions = `${lineNums.size ? toggle('my-line', byRows ? 'table_rows' : 'view_week', !state.wholeMap, '내 줄 보기', '전체 줄 보기') : ''}${toggle('only-standing', 'person', state.onlyStanding, '서 있는 사람만', '전체 칸 보기')}<button class="icon-btn" data-action="refresh-spots" aria-label="새로고침">${state.loadingSpots ? '<span class="hint" style="font-size:12px">…</span>' : ic('refresh')}</button>`;
   return `<header class="appbar wide"><button class="icon-btn lead" data-go="#/q" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button><h1>내 자리 찾기</h1><div class="acts">${actions}</div></header>
     <div class="line-head">
       <h2>${esc(z.name)} · ${esc(q.name)}</h2>
-      <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standing.size}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
+      <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standingList.length}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
       ${state.spotsError ? `<div class="error">${ic('warning', 'round')}<span>줄 현황을 받지 못했습니다. ${esc(state.spotsError)}</span></div>` : ''}
       <div class="legend"><span><i style="background:var(--accent)"></i>줄에 서 있음</span><span><i style="background:var(--orange)"></i>내 번호</span><span><i style="border:1px solid color-mix(in srgb, var(--hint) 67%, transparent)"></i>빈칸</span></div>
+      ${switches}
       <div class="dir">${ic('keyboard_double_arrow_up')}<span>${drawn.length && !state.onlyStanding ? '입장 방향 (줄 앞) · 주최 측이 그린 줄 배치' : '입장 방향 (줄 앞)'}</span></div>
       <div style="height:6px"></div>
     </div>
@@ -819,11 +926,16 @@ $app.addEventListener('click', async (ev) => {
     state.noticesReadAt = Date.now();
     store.set('noticesReadAt', state.noticesReadAt);
   } else if (a === 'only-standing') {
-    state.onlyStanding = !state.onlyStanding;
+    state.onlyStanding = t.dataset.v === '1';
     render();
-    if (!state.onlyStanding) scrollToMine();
+    hint(state.onlyStanding ? t.dataset.on : t.dataset.off);
+  } else if (a === 'my-line') {
+    state.wholeMap = t.dataset.v === '0';
+    render();
+    hint(state.wholeMap ? t.dataset.off : t.dataset.on);
   } else if (a === 'refresh-spots') {
     refreshSpots();
+    loadCatalog().then(render); // 관리자가 방금 바꿔 게시한 배치도·기준 줄도 반영
   } else if (a === 'leave') {
     leaveEvent();
   } else if (a === 'provider') {
@@ -927,7 +1039,7 @@ function openEvent(code) {
 }
 
 function scrollToMine() {
-  setTimeout(() => document.getElementById('my-slot')?.scrollIntoView({ block: 'center' }), 30);
+  setTimeout(() => document.getElementById('my-slot')?.scrollIntoView({ block: 'center', inline: 'center' }), 30);
 }
 
 window.addEventListener('hashchange', () => {
@@ -936,23 +1048,32 @@ window.addEventListener('hashchange', () => {
   if (r.name !== 'scan') stopScanner();
   clearInterval(spotPoll);
   spotPoll = null;
-  if (r.name === 'line') { refreshSpots(); spotPoll = setInterval(refreshSpots, 15e3); }
+  if (r.name === 'line') { refreshSpots(); loadCatalog().then(render); spotPoll = setInterval(refreshSpots, 15e3); }
   document.activeElement?.blur?.();
   render();
   window.scrollTo(0, 0);
   if (r.name === 'line') scrollToMine();
 });
 
-// 입장까지 남은 시간 갱신 (30초마다)
+// 입장까지 남은 시간: 1초마다 글자만 바꾼다 (화면 전체를 다시 그리지 않는다)
 setInterval(() => {
-  if (!myEntryState() && myEntryStart() && ['home', 'queue'].includes(route().name)) render();
-}, 30e3);
+  document.querySelectorAll('[data-countdown]').forEach((el) => { el.textContent = countdownBig(Number(el.dataset.countdown)); });
+  document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock)); });
+}, 1000);
 
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
 setInterval(() => {
   const c = current();
   if (c?.z.entryAt && !c.p.standing && c.z.entryAt > Date.now() - 2000 && ['home', 'queue', 'line'].includes(route().name)) render();
 }, 1000);
+
+// 화면을 보고 있는 동안 30초마다: 관리자가 다시 게시한 입장 시각·대기줄·배치도를 따라잡는다 (바뀌었을 때만 다시 그림)
+setInterval(async () => {
+  if (document.visibilityState !== 'visible') return;
+  const before = store.get('catalog', null);
+  await loadCatalog();
+  if (store.get('catalog', null) !== before && ['home', 'queue', 'line'].includes(route().name)) render();
+}, 30e3);
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { loadCatalog().then(render); syncSpot(); }
