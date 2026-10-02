@@ -269,15 +269,15 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-countdown b { flex: 1; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .entry-countdown .hint { font-size: 12px; }
 /* 대기줄 확인 화면의 디지털 시계 (home.dart EntryCountdown) */
-.entry-clock { padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, transparent); text-align: center; }
+.entry-clock { padding: 16px; border-radius: 12px; background: var(--card); text-align: center; }
 .entry-clock .lbl { font-size: 13px; font-weight: 600; }
 .entry-clock .digits { display: flex; justify-content: center; align-items: flex-start; margin-top: 8px; }
 .entry-clock .u { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .entry-clock .u + .u { margin-left: 10px; }
-.entry-clock .u b { padding: 2px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text);
+.entry-clock .u b { padding: 2px 10px; border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text);
   font-size: 38px; line-height: 1.15; font-weight: 800; font-variant-numeric: tabular-nums; }
 .entry-clock .u small { font-size: 11px; color: var(--hint); }
 .entry-clock i { font-style: normal; font-size: 32px; font-weight: 800; color: var(--text); padding: 0 4px; line-height: 1.4; }
 .entry-clock i.dim { opacity: 0.25; }
-.entry-clock .soon { font-size: 22px; font-weight: 800; color: var(--accent); }
+.entry-clock .soon { font-size: 22px; font-weight: 800; color: var(--text); }
 .entry-clock .sub { margin-top: 10px; font-size: 13px; }
