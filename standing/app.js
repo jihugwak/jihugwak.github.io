@@ -670,8 +670,8 @@ function viewLine() {
   const lineStanding = lineSorted.filter(isStand).length;
   const switches = myLine ? `
       <div class="line-card"><span class="ico">${ic(byRows ? 'table_rows' : 'view_week', 'round')}</span><div>
-        <small>내 줄</small><b>${byRows ? '앞에서' : '왼쪽에서'} ${lineNo}번째 ${byRows ? '가로줄' : '세로줄'}</b>
-        <span class="hint">${lineNums.size}칸${myRank >= 0 ? ` · 이 줄 ${myRank + 1}번째` : ''} · 서 있는 사람 ${lineStanding}명</span></div></div>` : '';
+        <small>내 줄</small><b>${p.ticket}번 · ${lineName(lineNo - 1, new Set(drawn.map(key)).size, byRows)}</b>
+        <span class="hint">서 있는 사람 ${lineStanding}명</span></div></div>` : '';
   // 내 줄 확대의 큰 칸 / 옆 줄 반쪽 칸
   const bigSlot = (n, front = frontN, back = backN) => {
     const mine = n === p.ticket, st = isStand(n);
@@ -746,6 +746,17 @@ function viewLine() {
     <div class="bottom-actions" style="padding-bottom:10px">${standingToggle(c)}
       <div class="hint center" style="font-size:12px;margin-top:4px">${p.standing ? '내 칸이 줄에 표시되고 있습니다.' : '자리를 찾아 선 뒤 [줄에 섰어요]를 누르면 내 칸이 채워집니다.'}</div>
     </div>`;
+}
+
+// line_map.dart lineName: 줄이 2개면 "왼쪽 줄/오른쪽 줄"(가로줄은 "앞 줄/뒤 줄"), 3개면 가운데, 더 많으면 가까운 끝에서 센다
+function lineName(index, count, byRows) {
+  const [first, last] = byRows ? ['앞', '뒤'] : ['왼쪽', '오른쪽'];
+  if (count <= 1) return '한 줄';
+  if (index === 0) return `${first} 줄`;
+  if (index === count - 1) return `${last} 줄`;
+  if (count === 3) return '가운데 줄';
+  const fromLast = count - 1 - index;
+  return index <= fromLast ? `${first}에서 ${index + 1}번째 줄` : `${last}에서 ${fromLast + 1}번째 줄`;
 }
 
 // account.dart
