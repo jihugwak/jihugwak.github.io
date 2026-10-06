@@ -270,15 +270,25 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-countdown b { flex: 1; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .entry-countdown .hint { font-size: 12px; }
 /* 대기줄 확인 화면의 디지털 시계 (home.dart EntryCountdown) */
-.entry-clock { padding: 16px; border-radius: 12px; background: var(--card); text-align: center; }
+.entry-clock { text-align: center; }
 .entry-clock .lbl { font-size: 13px; font-weight: 600; }
-.entry-clock .digits { display: flex; justify-content: center; align-items: flex-start; margin-top: 8px; }
-.entry-clock .u { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.entry-clock .u + .u { margin-left: 10px; }
-.entry-clock .u b { padding: 2px 10px; border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text);
-  font-size: 38px; line-height: 1.15; font-weight: 800; font-variant-numeric: tabular-nums; }
-.entry-clock .u small { font-size: 11px; color: var(--hint); }
-.entry-clock i { font-style: normal; font-size: 32px; font-weight: 800; color: var(--text); padding: 0 4px; line-height: 1.4; }
+.entry-clock .digits { display: flex; justify-content: center; align-items: center; margin-top: 4px; white-space: nowrap;
+  font-size: clamp(36px, 14vw, 56px); line-height: 1.1; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.entry-clock .digits b { font-weight: 800; }
+.entry-clock i { font-style: normal; }
 .entry-clock i.dim { opacity: 0.25; }
 .entry-clock .soon { font-size: 22px; font-weight: 800; color: var(--text); }
-.entry-clock .sub { margin-top: 10px; font-size: 13px; }
+
+/* 다이얼 (line_map.dart _DialItem): 칸 높이 = 화면의 1/5, 한 칸씩 스냅, 투명도·크기는 app.js dialFade 가 정한다 */
+.dial-row { height: var(--dial-h, 60px); box-sizing: border-box; scroll-snap-align: start; transform-origin: center; }
+.fcol-row.dial-row { padding: calc(var(--dial-h, 60px) * 0.06) 0; }
+.fcol-row.dial-row .fslot { height: 100%; padding: 0 20px; border-radius: 20px; }
+.fcol-row.dial-row .fslot b { font-size: calc(var(--dial-h, 60px) * 0.38); }
+.fcol-row.dial-row .fslot em { font-size: 15px; }
+.fcol-row.dial-row .peek .slot { height: calc(100% - 6px); align-self: center; }
+.map-row.big > div { padding: 7px 5px; }
+.map-row.big .slot { height: calc(var(--dial-h, 60px) - 14px); border-radius: 16px; font-size: calc(var(--dial-h, 60px) * 0.34); font-weight: 800; font-variant-numeric: tabular-nums;
+  background: var(--card); border: 1px solid color-mix(in srgb, var(--hint) 18%, transparent); color: color-mix(in srgb, var(--text) 85%, transparent); }
+.map-row.big .slot.stand { background: var(--accent); border: 2px solid var(--accent); color: #fff; }
+.map-row.big .slot.mine { background: color-mix(in srgb, var(--orange) 14%, transparent); border: 2px solid var(--orange); color: var(--orange); }
+.map-row.big .slot.mine.stand { background: var(--orange); color: #000; }

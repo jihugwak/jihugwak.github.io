@@ -317,15 +317,15 @@ function clockInner(at) {
   const t = Math.max(0, Math.floor((at - Date.now()) / 1000));
   if (t < 1) return '<b class="soon">곧 입장이 시작됩니다</b>';
   const days = Math.floor(t / 86400);
-  const unit = (d, label) => `<span class="u"><b>${d}</b><small>${label}</small></span>`;
+  // 바탕·숫자 칸·단위 없이 디지털 시계 숫자만 (00:05:03)
   const colon = `<i class="${t % 2 ? 'dim' : ''}">:</i>`;
-  return `<div class="hint lbl">입장까지</div><div class="digits" aria-label="입장까지 ${countdownText(at - Date.now())}">${days ? unit(days, '일') : ''}${unit(pad(Math.floor((t % 86400) / 3600)), '시간')}${colon}${unit(pad(Math.floor((t % 3600) / 60)), '분')}${colon}${unit(pad(t % 60), '초')}</div>`;
+  return `<div class="hint lbl">입장까지</div><div class="digits" aria-label="입장까지 ${countdownText(at - Date.now())}">${days ? `<b>${days}일&nbsp;</b>` : ''}<b>${pad(Math.floor((t % 86400) / 3600))}</b>${colon}<b>${pad(Math.floor((t % 3600) / 60))}</b>${colon}<b>${pad(t % 60)}</b></div>`;
 }
 
 function entryCountdown(big = false) {
   const at = myEntryStart();
   if (!at) return '';
-  if (big) return `<div class="entry-clock"><div data-clock="${at}">${clockInner(at)}</div><div class="hint sub">${timeShort(new Date(at))} 입장 예정 · 시작되면 알림으로 알려 드립니다</div></div>`;
+  if (big) return `<div class="entry-clock"><div data-clock="${at}">${clockInner(at)}</div></div>`;
   return `<div class="entry-countdown">${ic('schedule')}<b data-countdown="${at}">${countdownBig(at)}</b><span class="hint">${timeShort(new Date(at))} 입장 예정</span></div>`;
 }
 
@@ -643,12 +643,7 @@ function viewLine() {
   const total = q.max - q.min + 1;
   const drawn = (q.map?.slots || []).filter((s) => s.n >= q.min && s.n <= q.max);
   const slot = (n) => `<div class="slot${isStand(n) ? ' stand' : ''}${n === p.ticket ? ' mine' : ''}"${n === p.ticket ? ' id="my-slot"' : ''}>${n}</div>`;
-  const linear = (numbers) => `<ul class="line-list">${numbers.map((n, i) => `
-    <li class="${isStand(n) ? 'stand' : ''} ${n === p.ticket ? 'mine' : ''}">
-      <span class="rail"><span class="${i === 0 ? 'none' : ''}"></span><em></em><span class="${i === numbers.length - 1 ? 'none' : ''}"></span></span>
-      ${slot(n)}
-      ${n === p.ticket ? '<span class="tag mine">내 번호</span>' : isStand(n) ? '<span class="tag">서 있음</span>' : ''}
-    </li>`).join('')}</ul>`;
+
 
   // 기준 줄: 내 번호가 든 가로줄(같은 y)/세로줄(같은 x)
   const byRows = q.map?.axis === 'rows';
@@ -678,6 +673,8 @@ function viewLine() {
     const tag = mine ? '내 자리' : n === front ? '내 앞' : n === back ? '내 뒤' : st ? '서 있음' : '';
     return `<div class="fslot${st ? ' stand' : ''}${mine ? ' mine' : ''}"${mine ? ' id="my-slot"' : ''}><b>${n}</b>${tag ? `<em>${tag}</em>` : ''}</div>`;
   };
+  // 일자 목록(배치도 없음 · 전체 보기의 서 있는 사람만)도 내 줄 확대와 같은 큰 칸
+  const bigList = (numbers) => numbers.map((n) => `<div class="fcol-row dial-row"><div class="peek"></div>${bigSlot(n, null, null)}<div class="peek"></div></div>`).join('');
   const at = new Map(drawn.map((s) => [`${s.x},${s.y}`, s.n]));
   const peek = (x, y, side) => (at.has(`${x},${y}`) ? `<div class="peek ${side}">${slot(at.get(`${x},${y}`)).replace(' id="my-slot"', '')}</div>` : '<div class="peek"></div>');
   // 내 줄 보기: 내 줄 밖 칸은 흐리게
@@ -690,14 +687,14 @@ function viewLine() {
   if (myLine && drawn.length && state.onlyStanding && standingList.length) {
     body = byRows
       ? `<div class="frow-wrap"><div class="frow bigs" style="grid-template-columns:repeat(${standingList.length},minmax(84px,1fr))">${standingList.map(bigStand).join('')}</div></div>`
-      : standingList.map((n) => `<div class="fcol-row"><div class="peek"></div>${bigStand(n)}<div class="peek"></div></div>`).join('');
+      : standingList.map((n) => `<div class="fcol-row dial-row"><div class="peek"></div>${bigStand(n)}<div class="peek"></div></div>`).join('');
   } else if (myLine && drawn.length && !state.onlyStanding && !byRows) {
     // 세로줄 확대: 내 세로줄이 화면 폭을 채우고, 양옆 세로줄은 가장자리에 반쯤만 흐리게
     const ys = drawn.filter((s) => lineNums.has(s.n)).map((s) => s.y);
     const rows = [];
     for (let y = Math.min(...ys); y <= Math.max(...ys); y++) {
       const n = at.get(`${mineSlot.x},${y}`);
-      rows.push(`<div class="fcol-row">${peek(mineSlot.x - 1, y, 'l')}${n == null ? '<div></div>' : bigSlot(n)}${peek(mineSlot.x + 1, y, 'r')}</div>`);
+      rows.push(`<div class="fcol-row dial-row">${peek(mineSlot.x - 1, y, 'l')}${n == null ? '<div></div>' : bigSlot(n)}${peek(mineSlot.x + 1, y, 'r')}</div>`);
     }
     body = rows.join('');
   } else if (myLine && drawn.length && !state.onlyStanding) {
@@ -713,7 +710,7 @@ function viewLine() {
     const grid = (items, cls) => `<div class="frow ${cls}" style="grid-template-columns:repeat(${maxX - minX + 1},minmax(84px,1fr))">${items.join('')}</div>`;
     body = `<div class="frow-wrap">${grid(top, 'peeks')}${grid(cells, 'bigs')}${grid(bottom, 'peeks')}</div>`;
   } else if (state.onlyStanding) {
-    body = standingList.length ? linear(standingList) : `<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>`;
+    body = standingList.length ? bigList(standingList) : `<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>`;
   } else if (drawn.length) {
     // 주최 측이 그린 배치도 그대로 (빈 자리는 빈칸)
     const ys = drawn.map((s) => s.y), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -723,12 +720,14 @@ function viewLine() {
       const cells = [];
       // 내 줄 보기: 내 줄에 띠를 깔아 강조
       for (let x = 0; x < q.map.cols; x++) cells.push(`<div${myLine && !byRows && x === mineSlot.x ? ' class="my-line"' : ''}>${byX.has(x) ? cell(byX.get(x)) : ''}</div>`);
-      rows.push(`<div class="map-row${myLine && byRows && y === mineSlot.y ? ' my-line' : ''}" style="grid-template-columns:repeat(${q.map.cols},1fr)">${cells.join('')}</div>`);
+      rows.push(`<div class="map-row big dial-row${myLine && byRows && y === mineSlot.y ? ' my-line' : ''}" style="grid-template-columns:repeat(${q.map.cols},1fr)">${cells.join('')}</div>`);
     }
     body = rows.join('');
   } else {
-    body = linear(Array.from({ length: total }, (_, i) => q.min + i));
+    body = bigList(Array.from({ length: total }, (_, i) => q.min + i));
   }
+  // 세로로 넘기는 목록은 다이얼 (가로줄 확대만 옆으로 넘긴다). 마지막 칸도 기준 위치까지 오게 아래 여백.
+  if (body.includes('dial-row')) body += '<div class="dial-spacer"></div>';
 
   const actions = `${lineNums.size ? toggle('my-line', byRows ? 'table_rows' : 'view_week', !state.wholeMap, '내 줄 보기', '전체 줄 보기') : ''}${toggle('only-standing', 'person', state.onlyStanding, '서 있는 사람만', '전체 칸 보기')}<button class="icon-btn" data-action="refresh-spots" aria-label="새로고침">${state.loadingSpots ? '<span class="hint" style="font-size:12px">…</span>' : ic('refresh')}</button>`;
   return `<header class="appbar wide"><button class="icon-btn lead" data-go="#/q" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button><h1>내 자리 찾기</h1><div class="acts">${actions}</div></header>
@@ -879,6 +878,66 @@ function renderTabbar() {
   </div>`;
 }
 
+// ───────── 다이얼 (line_map.dart _DialPhysics · _DialItem) ─────────
+// 세로로 넘기는 줄 목록: 화면에 많아야 5칸, 놓으면 한 칸씩 기준 위치(스크롤 0 일 때 첫 칸 자리)에 맞춰 멈춘다.
+// 기준 위치의 칸이 가장 또렷하고, 아래로 갈수록(화면 아래에 가까울수록) 흐리고 조금 작아진다.
+const dial = { rows: [], focus: 0, h: 60, index: 0 };
+
+function setupDial() {
+  const rows = [...$app.querySelectorAll('.dial-row')];
+  dial.rows = rows;
+  document.documentElement.style.scrollSnapType = rows.length ? 'y mandatory' : '';
+  if (!rows.length) return;
+  // 칸 높이: 줄 목록이 보이는 높이의 1/5. 배치도 격자는 칸이 너무 길쭉해지지 않게 칸 폭에 맞춘다
+  const bottom = (document.querySelector('.bottom-actions')?.offsetHeight ?? 0) + ($tabbar?.offsetHeight ?? 0);
+  const appbar = document.querySelector('.appbar')?.offsetHeight ?? 56;
+  let h = (window.innerHeight - appbar - bottom) / 5;
+  const grid = rows[0].classList.contains('map-row') ? rows[0] : null;
+  if (grid) {
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    h = Math.min(h, (grid.clientWidth - 32) / cols + 8);
+  }
+  dial.h = Math.max(60, Math.min(400, h));
+  $app.style.setProperty('--dial-h', `${dial.h}px`);
+  // 기준 위치 = 첫 칸의 문서 위치. 칸 i 는 스크롤 i×칸높이 에서 기준 위치에 온다.
+  dial.focus = rows[0].getBoundingClientRect().top + window.scrollY;
+  for (const r of rows) r.style.scrollMarginTop = `${dial.focus}px`;
+  const spacer = $app.querySelector('.dial-spacer');
+  if (spacer) {
+    spacer.style.height = '0px';
+    const need = (rows.length - 1) * dial.h + window.innerHeight;
+    spacer.style.height = `${Math.max(0, need - document.documentElement.scrollHeight)}px`;
+  }
+  dialFade();
+}
+
+function dialFade() {
+  if (!dial.rows.length || !dial.rows[0].isConnected) return;
+  const bottom = (document.querySelector('.bottom-actions')?.offsetHeight ?? 0) + ($tabbar?.offsetHeight ?? 0);
+  const focusY = dial.focus - 0; // 스냅되면 칸 위쪽이 늘 이 높이(화면 기준)에 온다 — 스크롤 0 일 때의 첫 칸 위치
+  const below = Math.max(dial.h, window.innerHeight - bottom - focusY - dial.h);
+  for (const r of dial.rows) {
+    const rel = r.getBoundingClientRect().top - focusY;
+    const opacity = rel >= 0 ? 1 - 0.6 * Math.min(rel / below, 1) : 1 - 0.45 * Math.min(-rel / (dial.h * 2), 1);
+    const scale = 1 - 0.06 * Math.min(Math.abs(rel) / dial.h, 1);
+    r.style.opacity = opacity.toFixed(3);
+    r.style.transform = `scale(${scale.toFixed(4)})`;
+  }
+  // 기준 칸이 바뀌면 톡 (안드로이드 브라우저만 진동을 지원한다)
+  const i = Math.round(window.scrollY / dial.h);
+  if (i !== dial.index) {
+    dial.index = i;
+    navigator.vibrate?.(5);
+  }
+}
+
+let dialFrame = 0;
+window.addEventListener('scroll', () => {
+  if (!dial.rows.length || dialFrame) return;
+  dialFrame = requestAnimationFrame(() => { dialFrame = 0; dialFade(); });
+}, { passive: true });
+window.addEventListener('resize', () => { if (dial.rows.length) setupDial(); });
+
 function render() {
   const r = route();
   const focused = document.activeElement?.id;
@@ -887,6 +946,7 @@ function render() {
   $app.innerHTML = r.name === 'entry' ? viewEntry(r) : r.name === 'queue' ? viewQueue() : r.name === 'line' ? viewLine()
     : r.name === 'account' ? viewAccount() : r.name === 'scan' ? viewScan() : viewHome();
   renderTabbar();
+  setupDial();
   if (r.name === 'entry') updatePreview();
   if (r.name === 'scan') startScanner();
 }
@@ -1051,7 +1111,8 @@ function openEvent(code) {
 }
 
 function scrollToMine() {
-  setTimeout(() => document.getElementById('my-slot')?.scrollIntoView({ block: 'center', inline: 'center' }), 30);
+  // 다이얼이면 내 칸을 기준 위치(첫 칸 자리)에, 아니면 가운데에
+  setTimeout(() => { const el = document.getElementById('my-slot'); el?.scrollIntoView({ block: el.closest('.dial-row') ? 'start' : 'center', inline: 'center' }); }, 30);
 }
 
 window.addEventListener('hashchange', () => {
