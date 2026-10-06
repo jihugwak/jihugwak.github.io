@@ -42,6 +42,7 @@ const state = {
   notices: store.get('notices', []),
   noticesReadAt: store.get('noticesReadAt', 0),
   spots: [],
+  duplicates: 0,       // 같은 공연·구역에 내 번호로 참가한 다른 기기 수 (take_spot 이 돌려준다)
   spotsError: null,
   loadingSpots: false,
   onlyStanding: false,
@@ -232,6 +233,7 @@ let heartbeat = null, spotPoll = null;
 function syncSpot() {
   clearInterval(heartbeat);
   heartbeat = null;
+  state.duplicates = 0;
   if (!db) return;
   if (!current()?.q) { db.rpc('leave_spot', { p_device_id: state.deviceId }).then(() => {}, () => {}); return; }
   const report = () => {
@@ -240,7 +242,10 @@ function syncSpot() {
     db.rpc('take_spot', {
       p_event_code: c.e.code, p_device_id: state.deviceId, p_ticket_number: c.p.ticket,
       p_zone: c.z.name, p_queue: c.q.name, p_standing: !!c.p.standing,
-    }).then(() => {}, () => {});
+    }).then(({ data }) => {
+      const n = typeof data === 'number' ? data : 0;
+      if (n !== state.duplicates) { state.duplicates = n; render(); }
+    }, () => {});
   };
   report();
   heartbeat = setInterval(report, 2 * 60e3);
@@ -348,6 +353,15 @@ function entryBanner(big = false) {
   return `<div class="entry-banner ${open ? 'open' : 'closed'}">${ic(kind(n.kind).icon)}
     <div class="t"><div class="h"><b>${open ? '입장이 시작되었습니다' : '입장이 마감되었습니다'}</b><span class="hint">${timeShort(new Date(n.at))}</span></div>
     ${body ? `<div class="m">${esc(body)}</div>` : ''}</div></div>`;
+}
+
+// 같은 번호 중복 (home.dart DuplicateWarning): 어느 쪽이 잘못 넣었는지 알 수 없어 모두에게 확인만 부탁한다
+function duplicateWarning(c) {
+  const n = state.duplicates;
+  if (!n || !c?.q) return '';
+  return `<div class="entry-banner dup">${ic('warning_amber', 'round')}
+    <div class="t"><div class="h"><b>${n === 1 ? `다른 기기에서도 ${c.p.ticket}번으로 참가했습니다` : `다른 기기 ${n}대에서도 ${c.p.ticket}번으로 참가했습니다`}</b></div>
+    <div class="m">티켓의 입장번호가 맞는지 확인해 주세요. 잘못 넣었다면 번호를 고쳐 주세요.</div></div></div>`;
 }
 
 const unreadCount = () => myNotices().filter((n) => n.at > state.noticesReadAt).length;
@@ -521,6 +535,7 @@ function viewHome() {
           <button class="text-btn tight" data-go="#/e/${e.code}/edit">구역 변경</button></div>`
       : joined ? `
         ${entryBanner()}
+        ${duplicateWarning(c)}
         <div class="seat"><span><span class="hint">${esc(c.z.name)} · ${esc(c.q.name)}&nbsp;&nbsp;</span><b>${c.p.ticket}번</b></span>
           <button class="text-btn tight" data-go="#/e/${e.code}/edit">번호 수정</button></div>
         <div style="height:10px"></div>
@@ -602,6 +617,7 @@ function viewQueue() {
     <div class="body" style="padding-top:20px">
       ${entryBanner(true)}
       <div style="height:12px"></div>
+      ${duplicateWarning(c)}
       <div class="center hint" style="font-size:15px">${esc(c.e.title)}</div>
       <div class="center" style="font-size:28px;font-weight:700;margin-top:6px">${esc(c.z.name)}</div>
       <div class="center hint" style="font-size:14px;margin-top:20px">내 입장번호</div>

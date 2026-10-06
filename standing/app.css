@@ -255,6 +255,7 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px; }
 .entry-banner.open { --c: var(--accent); }
 .entry-banner.closed { --c: var(--red); }
+.entry-banner.dup { --c: var(--orange); }
 .entry-banner { background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
 .entry-banner > .mi { color: var(--c); font-size: 22px; }
 .entry-banner .t { flex: 1; min-width: 0; }
