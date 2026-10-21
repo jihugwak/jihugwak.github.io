@@ -110,7 +110,9 @@ function parseCatalog(text) {
       if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location: null, admission };
       const zoneMap = parseMap(z.map);
       const specs = Array.isArray(z.queues)
-        ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i, map: parseMap(q.map) }))
+        ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i, map: parseMap(q.map),
+            // 이 줄만 따로 정한 입장 시작 예정 (없으면 구역 admission)
+            admission: q.admission ? parseDate(q.admission) : null }))
         : autoSplit(z.min, z.max, z.queueCount || 1);
       // 예전 형식: 구역 전체 배치도에서 대기줄 번호만 떼어 온다
       for (const s of specs) {
@@ -271,7 +273,10 @@ const KINDS = {
   entryReady: { title: '입장 준비', message: '곧 입장합니다. 티켓과 신분증을 준비해 주세요.', icon: 'meeting_room', color: 'var(--accent)' },
   entryOpen: { title: '입장 시작', message: '입장이 시작되었습니다. 티켓을 준비하고 안내에 따라 입장해 주세요.', icon: 'login', color: 'var(--accent)' },
   entryTime: { title: '입장 시간 변경', message: '', icon: 'more_time', color: 'var(--accent)' },
+  showTime: { title: '공연 시간 변경', message: '', icon: 'theater_comedy', color: 'var(--accent)' },
   entryClosed: { title: '입장 마감', message: '입장이 마감되어 더 이상 입장할 수 없습니다.', icon: 'block', color: 'var(--red)' },
+  // 입장 완료: 입장 시작 띠를 내린다. 알림·안내 목록에는 안 보인다
+  entryDone: { title: '입장 완료', message: '입장이 완료되었습니다.', icon: 'check_circle', color: 'var(--accent)', silent: true },
   info: { title: '안내', message: '', icon: 'campaign', color: 'var(--accent)' },
 };
 function kind(k) { return KINDS[k] || KINDS.info; }
@@ -293,45 +298,69 @@ function receiveNotice(n) {
   state.notices.push(n);
   state.notices = state.notices.slice(-200);
   store.set('notices', state.notices);
-  if (targets(n, current()) && n.at > Date.now() - 10 * 60e3) toast(n);
+  if (targets(n, current()) && !kind(n.kind).silent && n.at > Date.now() - 10 * 60e3) toast(n);
   render();
 }
 
-const myNotices = () => {
+// 내게 해당되는 안내 전부 (입장 완료처럼 조용한 것 포함, 최신순)
+const myAllNotices = () => {
   const c = current();
   return c ? state.notices.filter((n) => targets(n, c)).sort((a, b) => b.at - a.at) : [];
 };
-// 내 대기줄의 현재 입장 상태 = 입장 시작/마감 중 가장 최근 것 (없으면 입장 전)
-const myEntryState = () => myNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed') || null;
+// 안내 목록·안 읽음에 보이는 것
+const myNotices = () => myAllNotices().filter((n) => !kind(n.kind).silent);
+// 내 대기줄의 현재 입장 상태 = 입장 시작/마감/완료 중 가장 최근 것 (없으면 입장 전)
+const myEntryState = () => myAllNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed' || n.kind === 'entryDone') || null;
 
-// 내 구역 입장 예정 시각(ms): 스태프가 조정한 것(가장 최근 입장 시간 변경) > 관리자가 정한 시각
+// 공연 시작 (Date): 스태프가 늦추거나 당긴 것(가장 최근 공연 시간 변경) > 관리자가 정한 시각 (notice.dart showStartFor)
+function showStart(e) {
+  const t = state.notices.filter((n) => n.kind === 'showTime' && n.entryAt && n.code === e.code && !n.zone).sort((a, b) => b.at - a.at)[0];
+  return t ? new Date(t.entryAt) : e.date;
+}
+
+// 내 대기줄 입장 예정 시각(ms): 스태프가 조정한 것(가장 최근 입장 시간 변경) > 관리자가 정한 줄 시각 > 구역 시각
 function myEntryStart() {
   const c = current();
   if (!c) return null;
   const t = myNotices().find((n) => n.kind === 'entryTime' && n.entryAt);
-  return t ? t.entryAt : c.z.admission ? c.z.admission.getTime() : null;
+  const planned = c.q?.admission || c.z.admission;
+  return t ? t.entryAt : planned ? planned.getTime() : null;
 }
 
 // home.dart EntryCountdown: "입장까지 1시간 23분 05초 · 오후 6:00 입장 예정" — 타이머처럼 1초마다 줄어든다
-const countdownBig = (at) => {
+// show = 공연까지 (입장이 시작된 뒤): 공연이 시작되면 사라진다
+const countdownBig = (at, show = false) => {
   const left = at - Date.now();
-  return left < 1000 ? '곧 입장이 시작됩니다' : `입장까지 ${countdownText(left)}`;
+  if (left < 1000) return show ? '' : '곧 입장이 시작됩니다';
+  return `${show ? '공연까지' : '입장까지'} ${countdownText(left)}`;
 };
 // 화면용 (EntryCountdown compact: false): 디지털 시계처럼 [시간]:[분]:[초] 숫자 칸, 콜론은 1초마다 깜빡인다
-function clockInner(at) {
+function clockInner(at, show = false) {
   const t = Math.max(0, Math.floor((at - Date.now()) / 1000));
-  if (t < 1) return '<b class="soon">곧 입장이 시작됩니다</b>';
+  if (t < 1) return show ? '' : '<b class="soon">곧 입장이 시작됩니다</b>';
+  const lbl = show ? '공연까지' : '입장까지';
   const days = Math.floor(t / 86400);
   // 바탕·숫자 칸·단위 없이 디지털 시계 숫자만 (00:05:03)
   const colon = `<i class="${t % 2 ? 'dim' : ''}">:</i>`;
-  return `<div class="hint lbl">입장까지</div><div class="digits" aria-label="입장까지 ${countdownText(at - Date.now())}">${days ? `<b>${days}일&nbsp;</b>` : ''}<b>${pad(Math.floor((t % 86400) / 3600))}</b>${colon}<b>${pad(Math.floor((t % 3600) / 60))}</b>${colon}<b>${pad(t % 60)}</b></div>`;
+  return `<div class="hint lbl">${lbl}</div><div class="digits" aria-label="${lbl} ${countdownText(at - Date.now())}">${days ? `<b>${days}일&nbsp;</b>` : ''}<b>${pad(Math.floor((t % 86400) / 3600))}</b>${colon}<b>${pad(Math.floor((t % 3600) / 60))}</b>${colon}<b>${pad(t % 60)}</b></div>`;
 }
 
 function entryCountdown(big = false) {
   const at = myEntryStart();
-  if (!at) return '';
-  if (big) return `<div class="entry-clock"><div data-clock="${at}">${clockInner(at)}</div></div>`;
-  return `<div class="entry-countdown">${ic('schedule')}<b data-countdown="${at}">${countdownBig(at)}</b><span class="hint">${timeShort(new Date(at))} 입장 예정</span></div>`;
+  return at ? countdownBox(at, big, false) : '';
+}
+
+// 입장 후: 공연까지 남은 시간 (공연이 시작되면 안 보인다)
+function showCountdown(big = false) {
+  const e = current()?.e;
+  const at = e ? showStart(e).getTime() : null;
+  return at && at > Date.now() ? countdownBox(at, big, true) : '';
+}
+
+function countdownBox(at, big, show) {
+  const s = show ? '1' : '';
+  if (big) return `<div class="entry-clock"><div data-clock="${at}" data-show="${s}">${clockInner(at, show)}</div></div>`;
+  return `<div class="entry-countdown">${ic(show ? 'theater_comedy' : 'schedule')}<b data-countdown="${at}" data-show="${s}">${countdownBig(at, show)}</b><span class="hint">${timeShort(new Date(at))} ${show ? '공연 시작' : '입장 예정'}</span></div>`;
 }
 
 // home.dart countdownText: "2일 3시간 04분 05초" / "1시간 04분 05초" / "4분 05초" / "5초"
@@ -348,11 +377,13 @@ function countdownText(ms) {
 function entryBanner(big = false) {
   const n = myEntryState();
   if (!n) return entryCountdown(big);
+  // 입장 완료: 띠를 내리고 공연까지 남은 시간만
+  if (n.kind === 'entryDone') return showCountdown(big);
   const open = n.kind === 'entryOpen';
   const body = open ? n.message : (n.message === KINDS.entryClosed.message ? '더 이상 입장할 수 없습니다.' : n.message);
   return `<div class="entry-banner ${open ? 'open' : 'closed'}">${ic(kind(n.kind).icon)}
     <div class="t"><div class="h"><b>${open ? '입장이 시작되었습니다' : '입장이 마감되었습니다'}</b><span class="hint">${timeShort(new Date(n.at))}</span></div>
-    ${body ? `<div class="m">${esc(body)}</div>` : ''}</div></div>`;
+    ${body ? `<div class="m">${esc(body)}</div>` : ''}</div></div>${showCountdown(big)}`;
 }
 
 // 같은 번호 중복 (home.dart DuplicateWarning): 어느 쪽이 잘못 넣었는지 알 수 없어 모두에게 확인만 부탁한다
@@ -526,7 +557,7 @@ function viewHome() {
     const joined = c && c.e.code === e.code;
     return `<div class="card event-card" data-card="${e.code}" data-go="${joined ? '#/q' : '#/e/' + e.code}">
       <h3>${esc(e.title)}</h3>
-      <div class="meta" style="margin-top:8px">${ic('calendar_today', 'outlined')}<span>${koreanShort(e.date)}</span></div>
+      <div class="meta" style="margin-top:8px">${ic('calendar_today', 'outlined')}<span>${koreanShort(showStart(e))}</span></div>
       <div class="meta" style="margin-top:4px">${ic('place', 'outlined')}<span>${esc(e.venue)}</span></div>
       <div style="height:14px"></div>
       ${joined && c.z.seated ? `
@@ -1146,8 +1177,8 @@ window.addEventListener('hashchange', () => {
 
 // 입장까지 남은 시간: 1초마다 글자만 바꾼다 (화면 전체를 다시 그리지 않는다)
 setInterval(() => {
-  document.querySelectorAll('[data-countdown]').forEach((el) => { el.textContent = countdownBig(Number(el.dataset.countdown)); });
-  document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock)); });
+  document.querySelectorAll('[data-countdown]').forEach((el) => { el.textContent = countdownBig(Number(el.dataset.countdown), !!el.dataset.show); });
+  document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock), !!el.dataset.show); });
 }, 1000);
 
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
