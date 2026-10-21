@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="robots" content="noindex">
+  <meta name="description" content="현장 스태프: 입장 관리와 관객 안내">
+  <title>입장번호 스태프</title>
+  <!-- 앱(Flutter)과 같은 Material 아이콘 -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined|Material+Icons+Round">
+  <!-- 관객 웹과 같은 테마 (standing_core theme.dart) -->
+  <link rel="stylesheet" href="../app.css">
+  <link rel="stylesheet" href="staff.css">
+</head>
+<body>
+  <!-- 스태프 웹. 화면은 스태프 앱(flutter/apps/staff/lib/ui)과 같게, 서버도 같게 (스태프 코드 → send_notice RPC). -->
+  <main id="app"></main>
+  <div id="sheet" class="sheet" hidden></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="staff.js"></script>
+</body>
+</html>
