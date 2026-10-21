@@ -45,11 +45,13 @@ const state = {
   duplicates: 0,       // 같은 공연·구역에 내 번호로 참가한 다른 기기 수 (take_spot 이 돌려준다)
   spotsError: null,
   loadingSpots: false,
-  onlyStanding: false,
+  onlyStanding: true,  // line_map.dart LineMapView(onlyStanding: true): 열 때마다 [서 있는 사람만] 으로
   wholeMap: false,     // 기준 줄이 있을 때 [전체 보기]
   checking: false,     // 위치 확인 중
 };
 store.set('deviceId', state.deviceId);
+// 바로 전 화면, 내 자리 찾기를 대기줄 확인에서 열었는지 (그러면 앱처럼 하단바가 없다)
+let lastRoute = null, lineFromQueue = false;
 
 function newDeviceId() {
   return (crypto.randomUUID && crypto.randomUUID()) || 'web-' + Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -528,9 +530,9 @@ function standingToggle(c, compact = false) {
     : `<button class="${cls}" data-action="stand-on">${ic('person_pin_circle')}<span>줄에 섰어요</span></button>`;
 }
 
-const appbar = (title, { back, actions = '' } = {}) => `
+const appbar = (title, { back, lead = '', actions = '' } = {}) => `
   <header class="appbar">
-    ${back ? `<button class="icon-btn lead" data-go="${back}" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button>` : ''}
+    ${back ? `<button class="icon-btn lead" data-go="${back}" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button>` : lead}
     <h1>${esc(title)}</h1>
     <div class="acts">${actions}</div>
   </header>`;
@@ -711,9 +713,9 @@ function viewLine() {
   const backN = myRank >= 0 && myRank < lineSorted.length - 1 ? lineSorted[myRank + 1] : null;
   const lineStanding = lineSorted.filter(isStand).length;
   const switches = myLine ? `
-      <div class="line-card"><span class="ico">${ic(byRows ? 'table_rows' : 'view_week', 'round')}</span><div>
-        <small>내 줄</small><b>${p.ticket}번 · ${lineName(lineNo - 1, new Set(drawn.map(key)).size, byRows)}</b>
-        <span class="hint">서 있는 사람 ${lineStanding}명</span></div></div>` : '';
+      <div class="line-card"><div class="top"><span class="ico">${ic(byRows ? 'table_rows' : 'view_week', 'round')}</span><small>내 줄</small></div>
+        <b>${p.ticket}번 · ${lineName(lineNo - 1, new Set(drawn.map(key)).size, byRows)}</b>
+        <span class="hint">서 있는 사람 ${lineStanding}명</span></div>` : '';
   // 내 줄 확대의 큰 칸 / 옆 줄 반쪽 칸
   const bigSlot = (n, front = frontN, back = backN) => {
     const mine = n === p.ticket, st = isStand(n);
@@ -782,8 +784,8 @@ function viewLine() {
       <h2>${esc(z.name)} · ${esc(q.name)}</h2>
       <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standingList.length}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
       ${state.spotsError ? `<div class="error">${ic('warning', 'round')}<span>줄 현황을 받지 못했습니다. ${esc(state.spotsError)}</span></div>` : ''}
-      <div class="legend"><span><i style="background:var(--accent)"></i>줄에 서 있음</span><span><i style="background:var(--orange)"></i>내 번호</span><span><i style="border:1px solid color-mix(in srgb, var(--hint) 67%, transparent)"></i>빈칸</span></div>
       ${switches}
+      <div class="legend"><span><i style="background:var(--accent)"></i>줄에 서 있음</span><span><i style="background:var(--orange)"></i>내 번호</span><span><i style="border:1px solid color-mix(in srgb, var(--hint) 67%, transparent)"></i>빈칸</span></div>
       <div class="dir">${ic('keyboard_double_arrow_up')}<span>${drawn.length && !state.onlyStanding ? '입장 방향 (줄 앞) · 주최 측이 그린 줄 배치' : '입장 방향 (줄 앞)'}</span></div>
       <div style="height:6px"></div>
     </div>
@@ -900,7 +902,7 @@ function viewNotices() {
   const c = current();
   const list = myNotices();
   return `<div class="sheet-body">
-    ${appbar('알림', { actions: '<button class="text-btn" data-action="close-sheet">닫기</button>' })}
+    ${appbar('알림', { lead: '<button class="icon-btn lead" data-action="close-sheet" aria-label="뒤로">' + ic('arrow_back_ios_new', '', 22) + '</button>', actions: '<button class="text-btn" data-action="close-sheet">닫기</button>' })}
     ${!c ? `<div class="center" style="padding:32px"><div style="padding-top:18vh">${ic('notifications_off', 'outlined', 48).replace('class="mi', 'class="hint mi')}</div>
         <div style="font-size:18px;font-weight:600;margin-top:12px">알림이 없습니다</div>
         <div class="hint" style="margin-top:6px">공연에 참가하면 주최 측의 현장 안내(뒤로 이동, 입장 준비 등)를 여기서 받습니다.</div></div>`
@@ -917,7 +919,10 @@ function viewNotices() {
 function renderTabbar() {
   const r = route().name;
   const onAccount = r === 'account';
-  $tabbar.hidden = r === 'scan';
+  // 앱처럼: 대기줄 확인(루트 화면)과 거기서 연 내 자리 찾기에는 하단바가 없다
+  const noTab = r === 'scan' || r === 'queue' || (r === 'line' && lineFromQueue);
+  $tabbar.hidden = noTab;
+  document.body.classList.toggle('no-tab', noTab);
   $tabbar.innerHTML = `<div>
     <button class="tab ${onAccount ? '' : 'on'}" data-go="#/">${ic(onAccount ? 'home' : 'home', onAccount ? 'outlined' : 'round')}<span>홈</span></button>
     <button class="tab-qr" data-go="#/scan" aria-label="QR 스캔"><span>${ic('qr_code_scanner', 'round')}</span></button>
@@ -946,6 +951,8 @@ function setupDial() {
   }
   dial.h = Math.max(60, Math.min(400, h));
   $app.style.setProperty('--dial-h', `${dial.h}px`);
+  // line_map.dart _CompactSlot: 칸 높이(다이얼 - 14)가 46 이하면 큰 칸이 아니라 테두리만 있는 작은 칸
+  $app.classList.toggle('dial-compact', dial.h - 14 <= 46);
   // 기준 위치 = 첫 칸의 문서 위치. 칸 i 는 스크롤 i×칸높이 에서 기준 위치에 온다.
   dial.focus = rows[0].getBoundingClientRect().top + window.scrollY;
   for (const r of rows) r.style.scrollMarginTop = `${dial.focus}px`;
@@ -1041,6 +1048,7 @@ $app.addEventListener('click', async (ev) => {
     setStanding(false);
   } else if (a === 'notices') {
     $sheet.innerHTML = viewNotices();
+    $sheet.classList.add('full');
     $sheet.hidden = false;
     state.noticesReadAt = Date.now();
     store.set('noticesReadAt', state.noticesReadAt);
@@ -1076,6 +1084,7 @@ $sheet.addEventListener('click', (ev) => {
   if (ev.target === $sheet || ev.target.closest('[data-action="close-sheet"]')) {
     if (dialogDone) { dialogDone('cancel'); return; }
     $sheet.hidden = true;
+    $sheet.classList.remove('full');
     render();
   }
 });
@@ -1164,6 +1173,13 @@ function scrollToMine() {
 
 window.addEventListener('hashchange', () => {
   const r = route();
+  if (r.name === 'line' && lastRoute !== 'line') {
+    lineFromQueue = lastRoute === 'queue';
+    // 앱의 LineMapView 는 열 때마다 처음 상태: [서 있는 사람만] · [내 줄 보기]
+    state.onlyStanding = true;
+    state.wholeMap = false;
+  }
+  lastRoute = r.name;
   if (r.name !== 'entry') entryZone = null;
   if (r.name !== 'scan') stopScanner();
   clearInterval(spotPoll);

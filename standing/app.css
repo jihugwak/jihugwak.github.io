@@ -3,6 +3,7 @@
   --bg: #FFFFFF;
   --card: #F2F2F7;
   --divider: #E5E5EA;
+  --outline: #767680;                   /* Theme.dividerColor (선택 칸 테두리·하단바 윗줄) */
   --text: #000000;
   --hint: rgba(0, 0, 0, 0.6);          /* Flutter hintColor (light) */
   --accent: #2F6BFF;
@@ -21,6 +22,7 @@
     --bg: #000000;
     --card: #1C1C1E;
     --divider: #38383A;
+    --outline: #8F909A;
     --text: #FFFFFF;
     --hint: rgba(255, 255, 255, 0.6);
     --disabled-bg: rgba(255, 255, 255, 0.12);
@@ -115,7 +117,7 @@ input { font: inherit; color: inherit; }
 .sub-14 { font-size: 14px; color: var(--hint); margin-top: 4px; }
 .section-title { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 10px; }
-.chip { width: 110px; padding: 11px 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--divider); text-align: center; }
+.chip { width: 110px; padding: 11px 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--outline); text-align: center; }
 .chip b { display: block; font-size: 16px; font-weight: 600; }
 .chip small { display: block; margin-top: 2px; font-size: 12px; color: var(--hint); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -134,6 +136,9 @@ input { font: inherit; color: inherit; }
 .info-row span:first-child { color: var(--hint); }
 .info-row span:last-child { font-weight: 500; }
 .bottom-actions { position: sticky; bottom: calc(var(--tab-h) + 4px + env(safe-area-inset-bottom)); background: var(--bg); padding: 8px 20px 4px; text-align: center; }
+/* 하단바가 없는 화면(대기줄 확인 등): 앱의 bottomNavigationBar 처럼 화면 맨 아래에 붙인다 */
+body.no-tab main { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+body.no-tab .bottom-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-width: 560px; margin: 0 auto; padding: 8px 20px calc(4px + env(safe-area-inset-bottom)); }
 
 /* ListTile: 좌우 16, 아이콘-글자 16, 제목 16/500, 부제 13 */
 .tile { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 56px; padding: 8px 16px; text-align: left; }
@@ -152,7 +157,7 @@ button.tile:active { background: rgba(127, 127, 127, 0.12); }
 .group { margin: 0 16px; }
 .group .divider { height: 0.5px; background: var(--divider); margin-left: 60px; }
 .group-footer { padding: 8px 36px 0; font-size: 12px; line-height: 1.4; color: var(--hint); }
-.logo { width: 32px; height: 32px; border-radius: 8px; background: #fff; border: 0.5px solid var(--divider); overflow: hidden; flex: none; }
+.logo { width: 32px; height: 32px; border-radius: 8px; background: #fff; border: 0.5px solid var(--outline); overflow: hidden; flex: none; }
 .logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .switch { position: relative; width: 51px; height: 31px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
@@ -192,12 +197,14 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .seg button.on { background: var(--accent); color: #fff; }
 .line-pick { margin-top: 10px; font-size: 15px; font-weight: 700; color: var(--accent); }
 /* 내 줄 확대 (line_map.dart _MyLineCard · _FocusSlot · _PeekSlot) */
-.line-card { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.line-card .ico { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--accent); color: #fff; }
-.line-card .ico .mi { font-size: 20px; }
-.line-card b { display: block; font-size: 15px; color: var(--accent); }
-.line-card small { display: block; font-size: 12px; font-weight: 600; color: var(--accent); }
-.line-card .hint { font-size: 13px; }
+/* line_map.dart _HalfTile(highlight): [아이콘 30 · 머리말] / 제목 / 설명 */
+.line-card { margin-top: 12px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.line-card .top { display: flex; align-items: center; gap: 8px; }
+.line-card .ico { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 9px; background: var(--accent); color: #fff; }
+.line-card .ico .mi { font-size: 18px; }
+.line-card small { font-size: 12px; font-weight: 600; color: var(--accent); }
+.line-card b { display: block; margin-top: 10px; font-size: 15px; font-weight: 700; color: var(--accent); }
+.line-card .hint { display: block; margin-top: 2px; font-size: 12px; line-height: 1.35; }
 .fslot { position: relative; display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 14px; border-radius: 14px;
   background: var(--card); border: 1px solid color-mix(in srgb, var(--hint) 18%, transparent); color: inherit; }
 .fslot b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -226,7 +233,7 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .map-row .slot { width: auto; height: 34px; margin: 0; border-radius: 8px; font-size: 14px; }
 
 /* 하단 탭바: 아이콘 24 · 글자 11, 가운데 QR 52 원 */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--bg); border-top: 0.5px solid var(--divider); padding: 4px 12px env(safe-area-inset-bottom); display: flex; justify-content: center; }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--bg); border-top: 0.5px solid var(--outline); padding: 4px 12px env(safe-area-inset-bottom); display: flex; justify-content: center; }
 .tabbar > div { display: flex; width: 100%; max-width: 560px; }
 .tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--hint); font-size: 11px; font-weight: 500; }
 .tab.on { color: var(--accent); font-weight: 600; }
@@ -242,6 +249,9 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .sheet { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, 0.5); display: flex; align-items: flex-end; justify-content: center; }
 .sheet-body { width: 100%; max-width: 560px; height: 85vh; overflow: auto; background: var(--bg); border-radius: 28px 28px 0 0; }
 .sheet-body .appbar { position: static; height: 56px; padding-top: 0; }
+/* 알림: 앱처럼 하단바 위까지 화면 전체를 덮는다 (isScrollControlled + useSafeArea) */
+.sheet.full { bottom: calc(var(--tab-h) + 4px + env(safe-area-inset-bottom)); background: none; }
+.sheet.full .sheet-body { height: 100%; border-radius: 0; }
 .sheet .dialog { align-self: center; margin: 0 24px 20vh; background: var(--card); border-radius: 28px; padding: 24px; width: 100%; max-width: 360px; white-space: pre-line; }
 .dialog h3 { margin: 0 0 16px; font-size: 22px; font-weight: 400; }
 .dialog p { margin: 0; color: var(--hint); font-size: 14px; }
@@ -293,3 +303,8 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .map-row.big .slot.stand { background: var(--accent); border: 2px solid var(--accent); color: #fff; }
 .map-row.big .slot.mine { background: color-mix(in srgb, var(--orange) 14%, transparent); border: 2px solid var(--orange); color: var(--orange); }
 .map-row.big .slot.mine.stand { background: var(--orange); color: #000; }
+/* 작은 칸 (_CompactSlot big=false): 바탕 없음 · 테두리 1 · 16 보통 굵기. 서 있음/내 칸만 굵게 */
+.dial-compact .map-row.big .slot { border-radius: 10px; font-size: 16px; font-weight: 500; background: transparent; border: 1px solid color-mix(in srgb, var(--hint) 35%, transparent); color: color-mix(in srgb, var(--hint) 75%, transparent); }
+.dial-compact .map-row.big .slot.stand { background: var(--accent); border: 2px solid var(--accent); color: #fff; font-weight: 800; }
+.dial-compact .map-row.big .slot.mine { background: transparent; border: 2px solid var(--orange); color: var(--orange); font-weight: 800; }
+.dial-compact .map-row.big .slot.mine.stand { background: var(--orange); color: #000; }
