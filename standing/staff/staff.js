@@ -43,7 +43,7 @@ const state = {
   loginError: null,
   loginBusy: false,
   // 안내 보내기 (console.dart 상태)
-  kind: 'moveBack',
+  kind: 'info',     // 안내 종류는 고르지 않고 항상 직접 입력 (console.dart _kind)
   zone: null,      // 구역 이름 (null = 공연 전체)
   queue: null,     // 대기줄 이름 (null = 구역 전체)
   useRange: false,
@@ -67,8 +67,6 @@ const KINDS = {
   info: { title: '안내', message: '', icon: 'campaign', color: 'var(--accent)' },
 };
 const kind = (k) => KINDS[k] || KINDS.info;
-/** [안내 보내기]에서 고르는 종류 (입장 시작/마감/완료·시간 변경은 위 [입장 관리]에서) */
-const SEND_KINDS = ['moveBack', 'moveForward', 'entryReady', 'info'];
 
 // ───────── 카탈로그 (standing_core catalog.dart 와 같은 해석) ─────────
 
@@ -487,10 +485,8 @@ function sendForm(e) {
           <span style="font-size:20px;padding:0 12px">~</span><input id="range-max" class="input range" inputmode="numeric" pattern="[0-9]*" placeholder="최대"></div><div id="range-error"></div></div>` : ''}
       </div>` : ''}
     <div style="height:24px"></div>
-    <div class="section-title">안내 종류</div>
-    <div class="chips">${SEND_KINDS.map((k) => chip(`data-action="pick-kind" data-kind="${k}"`, kind(k).title, null, state.kind === k, 100)).join('')}</div>
-    <div style="height:12px"></div>
-    <textarea id="message" class="input message" rows="2" placeholder="${esc(kind(state.kind).message || '메시지를 입력하세요')}"></textarea>
+    <div class="section-title">메시지</div>
+    <textarea id="message" class="input message" rows="2" placeholder="관객에게 보낼 안내를 입력하세요"></textarea>
     <div id="send-error">${state.sendError ? errorLine(state.sendError) : ''}</div>
     <div style="height:20px"></div>
     <button class="filled big" id="send" data-action="send">${ic('campaign')}<span>${state.sending ? '보내는 중…' : '안내 보내기'}</span></button>
@@ -515,7 +511,7 @@ function noticeList() {
 function formValues(e) {
   const z = e.zones.find((x) => x.name === state.zone) || null;
   const msg = document.getElementById('message')?.value.trim() ?? '';
-  const text = msg || kind(state.kind).message;
+  const text = msg; // 항상 직접 입력 (console.dart)
   let lo = null, hi = null, invalid = false;
   if (state.useRange && (!z || !z.seated)) {
     lo = parseInt(document.getElementById('range-min')?.value, 10);
@@ -697,8 +693,6 @@ $app.addEventListener('click', async (ev) => {
     state.zone = t.dataset.zone || null; state.queue = null; renderForm(e);
   } else if (a === 'pick-queue') {
     state.queue = t.dataset.queue || null; renderForm(e);
-  } else if (a === 'pick-kind') {
-    state.kind = t.dataset.kind; renderForm(e);
   } else if (a === 'send') {
     const { z: tz, text, lo, hi, invalid } = formValues(e);
     if (!text || invalid) return;
@@ -734,7 +728,7 @@ window.addEventListener('hashchange', () => {
   const r = route();
   if (r.name !== 'console') stopNotices();
   if (r.name === 'add') state.loginError = null;
-  if (r.name === 'console' && watching !== r.code) { state.zone = null; state.queue = null; state.useRange = false; state.kind = 'moveBack'; state.sendError = null; }
+  if (r.name === 'console' && watching !== r.code) { state.zone = null; state.queue = null; state.useRange = false; state.sendError = null; }
   render();
   window.scrollTo(0, 0);
 });
