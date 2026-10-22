@@ -466,7 +466,7 @@ function entryRow(z, q, ownTime) {
     <div class="row">${q ? `<b>${esc(q.name)}</b><span class="hint">${rangeText(q)}</span>` : '<span class="hint" style="font-size:15px">구역 전체</span>'}
       <span class="spacer"></span><span class="state ${cls}">${label}</span></div>
     ${q && ownTime ? entryTimeRow(z, q) : ''}
-    <div class="btns">${primary}<button class="outlined-red" data-action="entry-close" ${data} ${db && st !== 'entryClosed' ? '' : 'disabled'}>입장 마감</button></div>
+    <div class="btns">${primary}<button class="filled red" data-action="entry-close" ${data} ${db && st !== 'entryClosed' ? '' : 'disabled'}>입장 마감</button></div>
   </div>`;
 }
 
@@ -476,9 +476,9 @@ function sendForm(e) {
   const chip = (attrs, title, sub, on, width) => `<button class="chip${on ? ' on' : ''}" ${attrs}${width ? ` style="width:${width}px"` : ''}><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
   return `
     <div class="section-title">대상 구역</div>
-    <div class="chips">${chip('data-action="pick-zone" data-zone=""', '공연 전체', null, !z)}${e.zones.map((x) => chip(`data-action="pick-zone" data-zone="${esc(x.name)}"`, x.name, x.seated ? '지정석' : `${x.min}~${x.max}`, z?.name === x.name)).join('')}</div>
+    <div class="chips">${chip('data-action="pick-zone" data-zone=""', '공연 전체', '모든 구역', !z)}${e.zones.map((x) => chip(`data-action="pick-zone" data-zone="${esc(x.name)}"`, x.name, x.seated ? '지정석' : `${x.min}~${x.max}`, z?.name === x.name)).join('')}</div>
     ${z && !z.seated ? `<div style="height:20px"></div><div class="section-title">대상 대기줄</div>
-      <div class="chips">${chip('data-action="pick-queue" data-queue=""', `${z.name} 전체`, null, !state.queue)}${queues.map((q) => chip(`data-action="pick-queue" data-queue="${esc(q.name)}"`, q.name, rangeText(q), state.queue === q.name)).join('')}</div>` : ''}
+      <div class="chips">${chip('data-action="pick-queue" data-queue=""', `${z.name} 전체`, '모든 줄', !state.queue)}${queues.map((q) => chip(`data-action="pick-queue" data-queue="${esc(q.name)}"`, q.name, rangeText(q), state.queue === q.name)).join('')}</div>` : ''}
     ${!z || !z.seated ? `<div style="height:20px"></div>
       <div class="card">
         <label class="tile two" style="cursor:pointer"><span class="t"><b style="font-weight:600">번호 범위 지정</b><small>${z ? `${z.min}~${z.max} 안에서` : '특정 번호대에만 보낼 때'}</small></span>
