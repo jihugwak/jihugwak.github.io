@@ -386,7 +386,7 @@ function viewAdd() {
 // console.dart: [입장 관리] 탭 = 공연 시작 · 입장 관리, [안내 보내기] 탭 = 안내 보내기 · 보낸 안내.
 // 두 탭을 모두 그려 두고 숨기기만 한다 (탭을 오가도 입력 중인 값이 남게).
 function viewConsole(e) {
-  const tab = (id, icon, label) => `<button class="tab ${state.tab === id ? 'on' : ''}" data-action="tab" data-tab="${id}">${ic(icon, state.tab === id ? '' : 'outlined')}<span>${label}</span></button>`;
+  const tab = (id, icon, label) => `<button class="tab ${state.tab === id ? 'on' : ''}" data-action="tab" data-tab="${id}" aria-label="${label}" title="${label}">${ic(icon, state.tab === id ? '' : 'outlined')}</button>`;
   return `${appbar('현장 안내', { back: '#/', actions: `<button class="icon-btn" data-action="leave" aria-label="나가기" title="나가기">${ic('delete', 'outlined')}</button>` })}
     <nav class="tabbar console-tabs"><div>${tab('entry', 'door_front', '입장 관리')}${tab('notice', 'campaign', '안내 보내기')}</div></nav>
     <div class="body" id="page-entry" style="padding-top:20px"${state.tab === 'entry' ? '' : ' hidden'}>

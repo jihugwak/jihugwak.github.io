@@ -76,7 +76,7 @@ textarea { font: inherit; color: inherit; }
 
 /* 콘솔 아래 탭 (console.dart NavigationBar): 고른 탭 아이콘 뒤에 둥근 표시 */
 main:has(.console-tabs) { padding-bottom: calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
-.console-tabs .tab { height: 52px; gap: 2px; font-size: 12px; }
+.console-tabs .tab { height: 48px; }
 .console-tabs .tab .mi { width: 56px; height: 28px; border-radius: 14px; display: grid; place-items: center; }
 .console-tabs .tab.on { color: var(--text); }
 .console-tabs .tab.on .mi { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
