@@ -1045,7 +1045,10 @@ $app.addEventListener('click', async (ev) => {
   } else if (a === 'stand-on') {
     setStanding(true);
   } else if (a === 'stand-off') {
-    setStanding(false);
+    // 실수로 눌러 나가지 않도록 한 번 묻는다 (앱 StandingToggle 과 같은 창, 웹은 블루투스가 없어 설명만 다름)
+    const id = await dialog('줄에서 나왔나요?', '나가면 줄 현황에서 "줄에 서 있음"이 꺼져요.',
+      [{ label: '취소', id: 'cancel' }, { label: '나왔어요', id: 'leave', danger: true }]);
+    if (id === 'leave') setStanding(false);
   } else if (a === 'notices') {
     $sheet.innerHTML = viewNotices();
     $sheet.classList.add('full');
