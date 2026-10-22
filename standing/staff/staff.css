@@ -40,7 +40,7 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .state.done { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
 .filled.green { background: var(--green); }
 .filled.green:disabled { background: var(--disabled-bg); color: var(--disabled-fg); }
-.filled.red { background: var(--red); }
+.filled.red { background: #C9504A; } /* console.dart _closeRed: --red 는 너무 쨍해서 채도를 낮춤 */
 .filled.red:disabled { background: var(--disabled-bg); color: var(--disabled-fg); }
 .outlined-red { border-radius: 20px; border: 1px solid color-mix(in srgb, var(--red) 50%, transparent); color: var(--red); font-size: 15px; font-weight: 600; }
 .outlined-red:disabled { border-color: color-mix(in srgb, var(--text) 12%, transparent); color: var(--disabled-fg); }
@@ -76,8 +76,8 @@ textarea { font: inherit; color: inherit; }
 
 /* 콘솔 아래 탭 (console.dart NavigationBar): 고른 탭 아이콘 뒤에 둥근 표시 */
 main:has(.console-tabs) { padding-bottom: calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
-.console-tabs .tab { gap: 4px; font-size: 12px; }
-.console-tabs .tab .mi { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; }
+.console-tabs .tab { height: 52px; gap: 2px; font-size: 12px; }
+.console-tabs .tab .mi { width: 56px; height: 28px; border-radius: 14px; display: grid; place-items: center; }
 .console-tabs .tab.on { color: var(--text); }
 .console-tabs .tab.on .mi { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
 .divider-full.thick { height: 2px; }
