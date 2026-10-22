@@ -437,7 +437,9 @@ function entryCard(e, z) {
   const differ = entryStartsDiffer(z);
   // 줄마다 다르지 않으면 구역 전체 조정 (줄이 여럿이면 줄마다도 따로 조정할 수 있다)
   const head = differ ? '' : entryTimeRowZone(z, queues[0] ?? null);
-  const rows = z.seated ? entryRow(z, null, false) : queues.map((q) => entryRow(z, q, differ || z.queues.length > 1)).join('<div class="divider-full"></div>');
+  // 줄이 여럿이면 구역 전체를 한 번에 입장 시작·마감 (모든 줄에 적용, 그 뒤 줄마다 따로 바꿀 수 있다)
+  const all = !z.seated && queues.length > 1 ? `${entryRow(z, null, false)}<div class="divider-full thick"></div>` : '';
+  const rows = z.seated ? entryRow(z, null, false) : all + queues.map((q) => entryRow(z, q, differ || z.queues.length > 1)).join('<div class="divider-full"></div>');
   return `<div class="card staff-zone">
     <div class="zone-head"><b>${esc(z.name)}</b><span class="hint">${z.seated ? '지정석' : '스탠딩'}</span></div>
     ${head}${rows}</div>`;
@@ -593,7 +595,7 @@ async function doLogin() {
 
 /** 입장 시작/마감 확인 창 (console.dart _EntryDialog) */
 async function sendEntry(e, z, q, k) {
-  const target = [z.name, q?.name].filter(Boolean).join(' ');
+  const target = [z.name, q?.name ?? (z.seated ? null : '전체')].filter(Boolean).join(' ');
   const open = k === 'entryOpen';
   const r = await modal(`<h3>${esc(target)} ${kind(k).title}</h3>
     <p class="hint" style="font-size:14px">${open ? '관객 앱에 입장이 시작되었다고 표시되고, 아래 메시지가 함께 나갑니다.' : '관객 앱에 입장이 마감되어 들어올 수 없다고 표시됩니다.'}</p>
@@ -608,7 +610,7 @@ async function sendEntry(e, z, q, k) {
 
 /** 입장 완료: 확인만 받고 보낸다. 관객 앱에서는 입장 시작 띠가 내려간다 (알림 없음). */
 async function finishEntry(e, z, q) {
-  const target = [z.name, q?.name].filter(Boolean).join(' ');
+  const target = [z.name, q?.name ?? (z.seated ? null : '전체')].filter(Boolean).join(' ');
   const r = await modal(`<h3>${esc(target)} 입장 완료</h3><p class="hint" style="font-size:14px">관객 앱에서 "입장이 시작되었습니다" 안내가 내려갑니다. 관객에게 알림은 가지 않습니다.</p>
     ${dialogActs([['cancel', '취소'], ['ok', '입장 완료', 'font-weight:700']])}`);
   if (!r) return;

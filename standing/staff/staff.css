@@ -78,3 +78,4 @@ main:has(.console-tabs) { padding-bottom: calc(var(--tab-h) + 24px + env(safe-ar
 .console-tabs .tab .mi { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; }
 .console-tabs .tab.on { color: var(--text); }
 .console-tabs .tab.on .mi { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.divider-full.thick { height: 2px; }
