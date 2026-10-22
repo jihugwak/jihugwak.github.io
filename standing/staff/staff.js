@@ -332,7 +332,7 @@ const dialogActs = (items) => `<div class="acts">${items.map(([id, label, style 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   if (parts[0] === 'add') return { name: 'add' };
-  if (parts[0] === 'e' && parts[1]) return { name: 'console', code: parts[1].toUpperCase() };
+  if (parts[0] === 'e' && parts[1]) return { name: 'console', code: parts[1].toUpperCase(), sent: parts[2] === 'sent' };
   return { name: 'home' };
 }
 const go = (hash) => { location.hash = hash; };
@@ -381,11 +381,12 @@ function viewAdd() {
     </div>`;
 }
 
-// console.dart: [입장 관리] 탭 = 공연 시작 · 입장 관리, [안내 보내기] 탭 = 안내 보내기 · 보낸 안내.
+// console.dart: [입장 관리] 탭 = 공연 시작 · 입장 관리, [안내 보내기] 탭 = 안내 보내기 + [보낸 안내] 버튼.
 // 두 탭을 모두 그려 두고 숨기기만 한다 (탭을 오가도 입력 중인 값이 남게).
+// 보낸 안내(SentNoticesView)는 #/e/코드/sent — 콘솔 위에 덮는 화면이라 돌아와도 입력 중인 값이 남는다.
 function viewConsole(e) {
   const tab = (id, icon, label) => `<button class="tab ${state.tab === id ? 'on' : ''}" data-action="tab" data-tab="${id}" aria-label="${label}" title="${label}">${ic(icon, state.tab === id ? '' : 'outlined')}</button>`;
-  return `${appbar('현장 안내', { back: '#/', actions: `<button class="icon-btn" data-action="leave" aria-label="나가기" title="나가기">${ic('delete', 'outlined')}</button>` })}
+  return `<div id="console-main">${appbar('현장 안내', { back: '#/', actions: `<button class="icon-btn" data-action="leave" aria-label="나가기" title="나가기">${ic('delete', 'outlined')}</button>` })}
     <nav class="tabbar console-tabs"><div>${tab('entry', 'door_front', '입장 관리')}${tab('notice', 'campaign', '안내 보내기')}</div></nav>
     <div class="body" id="page-entry" style="padding-top:20px"${state.tab === 'entry' ? '' : ' hidden'}>
       <div style="font-size:22px;font-weight:700">${esc(e.title)}</div>
@@ -403,12 +404,17 @@ function viewConsole(e) {
       <div class="staff-h" style="margin-bottom:16px">안내 보내기</div>
       <div id="send-form">${sendForm(e)}</div>
 
-      <div style="height:32px"></div>
-      <div class="staff-h" style="margin-bottom:0">보낸 안내</div>
-      <div class="hint" style="font-size:12px">최근 24시간 · 다른 스태프가 보낸 것도 보입니다</div>
-      <div style="height:12px"></div>
-      <div id="notice-list">${noticeList()}</div>
+      <div style="height:28px"></div>
+      <div class="card"><button class="tile two" data-go="#/e/${esc(e.code)}/sent"><span style="color:var(--accent);display:flex">${ic('history')}</span><span class="t"><b>보낸 안내</b><small id="sent-count">${sentCount()}</small></span>${ic('chevron_right', '', 24).replace('class="mi', 'class="chev mi')}</button></div>
       <div style="height:24px"></div>
+    </div></div>
+    <div id="console-sent" hidden>${appbar('보낸 안내', { back: `#/e/${esc(e.code)}` })}
+      <div class="body" style="padding-top:20px">
+        <div class="hint" style="font-size:12px">최근 24시간 · 다른 스태프가 보낸 것도 보입니다</div>
+        <div style="height:12px"></div>
+        <div id="notice-list">${noticeList()}</div>
+        <div style="height:24px"></div>
+      </div>
     </div>`;
 }
 
@@ -493,6 +499,19 @@ function sendForm(e) {
     <div class="hint center" id="send-target" style="font-size:13px;margin-top:6px"></div>`;
 }
 
+const sentCount = () => `최근 24시간 ${state.notices.length}개`;
+
+/** 콘솔 ↔ 보낸 안내 화면 전환 (다시 그리지 않고 숨기기만). 콘솔 스크롤 위치는 돌아올 때 되돌린다 */
+let consoleScroll = 0;
+function showSent(on) {
+  const main = document.getElementById('console-main'), sent = document.getElementById('console-sent');
+  if (!main || !sent || sent.hidden === !on) return;
+  if (on) consoleScroll = window.scrollY;
+  main.hidden = on;
+  sent.hidden = !on;
+  window.scrollTo(0, on ? 0 : consoleScroll);
+}
+
 function noticeList() {
   const err = state.noticesError ? errorLine(state.noticesError) : '';
   if (!state.notices.length) return `${err}<div class="card" style="padding:16px"><span class="hint">아직 보낸 안내가 없습니다.</span></div>`;
@@ -543,6 +562,7 @@ function renderLive() {
   document.getElementById('show-sub').textContent = `${koreanShort(new Date(showStart(e)))} · ${e.venue}`;
   document.getElementById('entry-cards').innerHTML = e.zones.map((z) => entryCard(e, z)).join('<div style="height:10px"></div>');
   document.getElementById('notice-list').innerHTML = noticeList();
+  document.getElementById('sent-count').textContent = sentCount();
 }
 
 function renderForm(e) {
@@ -561,6 +581,7 @@ function render() {
     if (!e) { $app.innerHTML = `${appbar('', { back: '#/' })}<div class="center" style="padding-top:40vh">${state.events.length ? '공연을 찾을 수 없습니다' : '불러오는 중…'}</div>`; return; }
     if (!state.staffCodes[e.code] || isPast(e)) { go('#/'); return; }
     $app.innerHTML = viewConsole(e);
+    showSent(r.sent);
     updateSendBar(e);
     startNotices(e.code);
     return;
@@ -726,6 +747,8 @@ $app.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.i
 
 window.addEventListener('hashchange', () => {
   const r = route();
+  // 같은 공연의 콘솔 ↔ 보낸 안내: 화면을 새로 그리지 않는다 (입력 중인 값 유지)
+  if (r.name === 'console' && watching === r.code && document.getElementById('console-main')) { showSent(r.sent); return; }
   if (r.name !== 'console') stopNotices();
   if (r.name === 'add') state.loginError = null;
   if (r.name === 'console' && watching !== r.code) { state.zone = null; state.queue = null; state.useRange = false; state.sendError = null; }
