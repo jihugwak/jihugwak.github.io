@@ -71,3 +71,10 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .appbar .acts .text-btn { white-space: nowrap; }
 /* textarea 는 기본이 고정폭 글꼴 → 본문 글꼴 */
 textarea { font: inherit; color: inherit; }
+
+/* 콘솔 아래 탭 (console.dart NavigationBar): 고른 탭 아이콘 뒤에 둥근 표시 */
+main:has(.console-tabs) { padding-bottom: calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
+.console-tabs .tab { gap: 4px; font-size: 12px; }
+.console-tabs .tab .mi { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; }
+.console-tabs .tab.on { color: var(--text); }
+.console-tabs .tab.on .mi { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }

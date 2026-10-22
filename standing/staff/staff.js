@@ -49,6 +49,8 @@ const state = {
   useRange: false,
   sending: false,
   sendError: null,
+  /** 아래 탭 (console.dart _tab): 'entry' = 입장 관리, 'notice' = 안내 보내기 + 보낸 안내 */
+  tab: 'entry',
 };
 
 // ───────── 안내 종류 (notice.dart NoticeKind) ─────────
@@ -381,10 +383,13 @@ function viewAdd() {
     </div>`;
 }
 
-// console.dart: 공연 시작 · 입장 관리 · 안내 보내기 · 보낸 안내
+// console.dart: [입장 관리] 탭 = 공연 시작 · 입장 관리, [안내 보내기] 탭 = 안내 보내기 · 보낸 안내.
+// 두 탭을 모두 그려 두고 숨기기만 한다 (탭을 오가도 입력 중인 값이 남게).
 function viewConsole(e) {
+  const tab = (id, icon, label) => `<button class="tab ${state.tab === id ? 'on' : ''}" data-action="tab" data-tab="${id}">${ic(icon, state.tab === id ? '' : 'outlined')}<span>${label}</span></button>`;
   return `${appbar('현장 안내', { back: '#/', actions: '<button class="text-btn" data-action="leave">나가기</button>' })}
-    <div class="body" style="padding-top:20px">
+    <nav class="tabbar console-tabs"><div>${tab('entry', 'door_front', '입장 관리')}${tab('notice', 'campaign', '안내 보내기')}</div></nav>
+    <div class="body" id="page-entry" style="padding-top:20px"${state.tab === 'entry' ? '' : ' hidden'}>
       <div style="font-size:22px;font-weight:700">${esc(e.title)}</div>
       <div class="hint" id="show-sub">${koreanShort(new Date(showStart(e)))} · ${esc(e.venue)}</div>
       <div style="height:16px"></div>
@@ -394,8 +399,9 @@ function viewConsole(e) {
       <div class="hint" style="font-size:12px">입장 시작·마감을 누르면 그 줄(지정석은 구역) 관객 앱에 바로 표시됩니다</div>
       <div style="height:12px"></div>
       <div id="entry-cards">${e.zones.map((z) => entryCard(e, z)).join('<div style="height:10px"></div>')}</div>
-
-      <div style="height:22px"></div>
+      <div style="height:14px"></div>
+    </div>
+    <div class="body" id="page-notice" style="padding-top:20px"${state.tab === 'notice' ? '' : ' hidden'}>
       <div class="staff-h" style="margin-bottom:16px">안내 보내기</div>
       <div id="send-form">${sendForm(e)}</div>
 
@@ -653,6 +659,16 @@ $app.addEventListener('click', async (ev) => {
   if (a === 'leave') {
     const r = await modal(`<h3>이 기기에서 스태프 코드를 지웁니다.</h3>${dialogActs([['cancel', '취소'], ['ok', '나가기', 'color:var(--red)']])}`);
     if (r) { logout(e.code); go('#/'); }
+  } else if (a === 'tab') {
+    state.tab = t.dataset.tab;
+    document.getElementById('page-entry').hidden = state.tab !== 'entry';
+    document.getElementById('page-notice').hidden = state.tab !== 'notice';
+    document.querySelectorAll('.console-tabs .tab').forEach((b) => {
+      const on = b.dataset.tab === state.tab;
+      b.classList.toggle('on', on);
+      b.querySelector('.mi').className = on ? 'mi material-icons' : 'mi material-icons-outlined';
+    });
+    window.scrollTo(0, 0);
   } else if (a === 'entry-open') {
     await sendEntry(e, z, q, 'entryOpen');
   } else if (a === 'entry-close') {
