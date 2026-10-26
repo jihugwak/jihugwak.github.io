@@ -330,39 +330,52 @@ function myEntryStart() {
 }
 
 // home.dart EntryCountdown: "입장까지 1시간 23분 05초 · 오후 6:00 입장 예정" — 타이머처럼 1초마다 줄어든다
-// show = 공연까지 (입장이 시작된 뒤): 공연이 시작되면 사라진다
-const countdownBig = (at, show = false) => {
+// mode: '' = 입장까지, 'show' = 공연까지 (입장이 시작된 뒤, 공연이 시작되면 사라진다), 'line' = 줄서기까지 (줄서기 시작 전)
+const CD = {
+  '': { what: '입장까지', soon: '곧 입장이 시작됩니다', small: '입장 예정', icon: 'schedule' },
+  show: { what: '공연까지', soon: '', small: '공연 시작', icon: 'theater_comedy' },
+  line: { what: '줄서기까지', soon: '곧 줄서기가 시작됩니다', small: '줄서기 시작', icon: 'groups' },
+};
+const countdownBig = (at, mode = '') => {
   const left = at - Date.now();
-  if (left < 1000) return show ? '' : '곧 입장이 시작됩니다';
-  return `${show ? '공연까지' : '입장까지'} ${countdownText(left)}`;
+  if (left < 1000) return CD[mode].soon;
+  return `${CD[mode].what} ${countdownText(left)}`;
 };
 // 화면용 (EntryCountdown compact: false): 디지털 시계처럼 [시간]:[분]:[초] 숫자 칸, 콜론은 1초마다 깜빡인다
-function clockInner(at, show = false) {
+function clockInner(at, mode = '') {
   const t = Math.max(0, Math.floor((at - Date.now()) / 1000));
-  if (t < 1) return show ? '' : '<b class="soon">곧 입장이 시작됩니다</b>';
-  const lbl = show ? '공연까지' : '입장까지';
+  if (t < 1) return CD[mode].soon ? `<b class="soon">${CD[mode].soon}</b>` : '';
+  const lbl = CD[mode].what;
   const days = Math.floor(t / 86400);
   // 바탕·숫자 칸·단위 없이 디지털 시계 숫자만 (00:05:03)
   const colon = `<i class="${t % 2 ? 'dim' : ''}">:</i>`;
   return `<div class="hint lbl">${lbl}</div><div class="digits" aria-label="${lbl} ${countdownText(at - Date.now())}">${days ? `<b>${days}일&nbsp;</b>` : ''}<b>${pad(Math.floor((t % 86400) / 3600))}</b>${colon}<b>${pad(Math.floor((t % 3600) / 60))}</b>${colon}<b>${pad(t % 60)}</b></div>`;
 }
 
+// 줄서기 시작 전이면 줄서기까지 먼저 (시각이 지나면 화면을 다시 그려 입장까지로 바뀐다)
 function entryCountdown(big = false) {
+  const line = myLineStart();
+  if (line) return countdownBox(line, big, 'line');
   const at = myEntryStart();
-  return at ? countdownBox(at, big, false) : '';
+  return at ? countdownBox(at, big, '') : '';
+}
+
+// 내 구역 줄서기 시작 시각(ms), 아직 전일 때만 (store.dart myLineStart)
+function myLineStart() {
+  const at = current()?.z.entryAt?.getTime();
+  return at && at > Date.now() ? at : null;
 }
 
 // 입장 후: 공연까지 남은 시간 (공연이 시작되면 안 보인다)
 function showCountdown(big = false) {
   const e = current()?.e;
   const at = e ? showStart(e).getTime() : null;
-  return at && at > Date.now() ? countdownBox(at, big, true) : '';
+  return at && at > Date.now() ? countdownBox(at, big, 'show') : '';
 }
 
-function countdownBox(at, big, show) {
-  const s = show ? '1' : '';
-  if (big) return `<div class="entry-clock"><div data-clock="${at}" data-show="${s}">${clockInner(at, show)}</div></div>`;
-  return `<div class="entry-countdown">${ic(show ? 'theater_comedy' : 'schedule')}<b data-countdown="${at}" data-show="${s}">${countdownBig(at, show)}</b><span class="hint">${timeShort(new Date(at))} ${show ? '공연 시작' : '입장 예정'}</span></div>`;
+function countdownBox(at, big, mode) {
+  if (big) return `<div class="entry-clock"><div data-clock="${at}" data-mode="${mode}">${clockInner(at, mode)}</div></div>`;
+  return `<div class="entry-countdown">${ic(CD[mode].icon)}<b data-countdown="${at}" data-mode="${mode}">${countdownBig(at, mode)}</b><span class="hint">${timeShort(new Date(at))} ${CD[mode].small}</span></div>`;
 }
 
 // home.dart countdownText: "2일 3시간 04분 05초" / "1시간 04분 05초" / "4분 05초" / "5초"
@@ -1196,8 +1209,8 @@ window.addEventListener('hashchange', () => {
 
 // 입장까지 남은 시간: 1초마다 글자만 바꾼다 (화면 전체를 다시 그리지 않는다)
 setInterval(() => {
-  document.querySelectorAll('[data-countdown]').forEach((el) => { el.textContent = countdownBig(Number(el.dataset.countdown), !!el.dataset.show); });
-  document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock), !!el.dataset.show); });
+  document.querySelectorAll('[data-countdown]').forEach((el) => { el.textContent = countdownBig(Number(el.dataset.countdown), el.dataset.mode); });
+  document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock), el.dataset.mode); });
 }, 1000);
 
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
