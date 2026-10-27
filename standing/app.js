@@ -295,6 +295,15 @@ function targets(n, c) {
   return true;
 }
 
+/** 스태프가 취소한 안내를 지운다 (store.dart removeRemote) — 목록·입장 상태·시간 변경에서 빠진다. 모르는 id 는 무시 */
+function removeNotice(id) {
+  const before = state.notices.length;
+  state.notices = state.notices.filter((x) => x.id !== id);
+  if (state.notices.length === before) return;
+  store.set('notices', state.notices);
+  render();
+}
+
 function receiveNotice(n) {
   if (state.notices.some((x) => x.id === n.id)) return;
   state.notices.push(n);
@@ -426,10 +435,19 @@ async function syncNotices() {
     entryAt: r.entry_at ? new Date(r.entry_at).getTime() : null,
   });
   const since = new Date(Date.now() - 6 * 3600e3).toISOString();
-  const { data } = await db.from('notices').select().eq('event_code', code).gte('created_at', since).order('created_at', { ascending: false }).limit(100);
+  const { data, error } = await db.from('notices').select().eq('event_code', code).gte('created_at', since).order('created_at', { ascending: false }).limit(100);
+  if (!error && data) {
+    // 페이지를 닫은 동안 취소된 안내: 다시 받아 온 범위 안인데 서버에 없으면 지운다 (100건이 꽉 찼으면 받은 것 중 가장 오래된 시각부터)
+    const ids = new Set(data.map((r) => r.id));
+    const from = data.length >= 100 ? new Date(data[data.length - 1].created_at).getTime() : Date.parse(since);
+    const kept = state.notices.filter((n) => n.code !== code || n.at < from || ids.has(n.id));
+    if (kept.length !== state.notices.length) { state.notices = kept; store.set('notices', kept); render(); }
+  }
   (data || []).reverse().forEach((r) => receiveNotice(fromRow(r)));
   channel = db.channel('notices:' + code)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notices', filter: `event_code=eq.${code}` }, (payload) => receiveNotice(fromRow(payload.new)))
+    // 취소(DELETE)는 공연을 가려 주지 못해 id 만 온다
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notices' }, (payload) => { if (payload.old?.id) removeNotice(payload.old.id); })
     .subscribe();
 }
 

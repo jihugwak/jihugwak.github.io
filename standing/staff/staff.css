@@ -80,3 +80,5 @@ main:has(.console-tabs) { padding-bottom: calc(var(--tab-h) + 24px + env(safe-ar
 .console-tabs .tab .mi { font-size: 28px; }
 .console-tabs .tab.on { color: var(--accent); }
 .divider-full.thick { height: 2px; }
+.staff-notice .cancel-notice { flex: none; color: #C9504A; padding: 4px 8px; min-height: 32px; font-size: 14px; }
+.staff-notice .cancel-notice:disabled { color: var(--disabled-fg); }

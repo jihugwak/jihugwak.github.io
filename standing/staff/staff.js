@@ -180,6 +180,13 @@ function insertNotice(n) {
   renderLive();
 }
 
+/** 스태프가 취소한 안내 (Realtime DELETE 는 공연을 가려 주지 못해 id 만 온다 — 모르는 id 는 무시) */
+function removeNotice(id) {
+  const before = state.notices.length;
+  state.notices = state.notices.filter((n) => n.id !== id);
+  if (state.notices.length !== before) renderLive();
+}
+
 async function startNotices(code) {
   if (watching === code) return;
   stopNotices();
@@ -199,6 +206,7 @@ async function startNotices(code) {
   if (watching !== code) return;
   channel = db.channel('notices:' + code)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notices', filter: `event_code=eq.${code}` }, (payload) => insertNotice(fromRow(payload.new)))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notices' }, (payload) => { if (payload.old?.id) removeNotice(payload.old.id); })
     .subscribe((status) => {
       // 끊기면 5초 뒤 다시 붙는다
       if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && watching === code) {
@@ -229,6 +237,17 @@ async function send(e, { kind: k, message, zone = null, queue = null, min = null
   // 앱이 꺼져 있는 관객에게도 가도록 푸시를 부탁한다 (입장 완료처럼 조용한 안내는 제외)
   if (!kind(k).silent) db.functions.invoke('push-notice', { body: { notice_id: row.id } }).catch(() => {});
   insertNotice(fromRow(row));
+}
+
+/** 보낸 안내 취소 (store.dart cancel): 서버에서 지우고, 정정 안내를 쓰면 같은 대상에게 이어서 보낸다 */
+async function cancelNotice(e, n, correction) {
+  if (!db) throw new Error('안내 서버가 설정되지 않았습니다.');
+  const staffCode = state.staffCodes[e.code];
+  if (!staffCode) throw new Error('스태프 코드가 맞지 않습니다.');
+  const { error } = await db.rpc('cancel_notice', { p_event_code: e.code, p_staff_code: staffCode, p_id: n.id });
+  if (error) throw new Error(error.code === '28000' ? '스태프 코드가 맞지 않습니다. 주최 측에 확인해 주세요.' : error.message);
+  removeNotice(n.id);
+  if (correction) await send(e, { kind: 'info', message: correction, zone: n.zone, queue: n.queue, min: n.min, max: n.max });
 }
 
 // ───────── 입장 상태·시각 (store.dart entryState / entryStart / showStart) ─────────
@@ -521,7 +540,8 @@ function noticeList() {
     return `<div class="card staff-notice"><span style="color:${color}">${ic(k.icon)}</span>
       <div class="t"><div class="row"><b>${esc(k.title)}</b><span class="spacer"></span><span class="hint" style="font-size:12px">${timeShort(new Date(n.at))}</span></div>
         <div style="margin-top:2px;white-space:pre-line">${esc(n.message)}</div>
-        <div class="hint" style="font-size:12px;margin-top:2px">${esc(targetText(n.zone, n.queue, n.min, n.max))}</div></div></div>`;
+        <div class="row" style="margin-top:2px"><span class="hint" style="font-size:12px;flex:1">${esc(targetText(n.zone, n.queue, n.min, n.max))}</span>
+        <button class="text-btn cancel-notice" data-action="cancel-notice" data-id="${esc(n.id)}" ${db ? '' : 'disabled'}>취소</button></div></div></div>`;
   }).join('<div style="height:10px"></div>');
 }
 
@@ -709,6 +729,23 @@ $app.addEventListener('click', async (ev) => {
     try {
       await send(e, { kind: 'showTime', message: r.message, entryAt: r.at });
       hint(`공연 시작을 ${timeShort(new Date(r.at))}로 바꿨습니다.`);
+    } catch (err) { hint(err.message); }
+  } else if (a === 'cancel-notice') {
+    // console.dart _CancelDialog: 정정 안내는 쓰고 싶을 때만 (비우면 취소만)
+    const n = state.notices.find((x) => x.id === t.dataset.id);
+    if (!n) return;
+    const r = await modal(`<h3>이 안내를 취소할까요?</h3>
+      <p style="margin:0 0 4px;font-weight:600">${esc(kind(n.kind).title)} · ${esc(targetText(n.zone, n.queue, n.min, n.max))}</p>
+      <p style="margin:0 0 12px;white-space:pre-line">${esc(n.message)}</p>
+      <p class="hint" style="font-size:13px">관객 앱·웹 안내 목록에서 사라지고, 입장 시작·마감·시간 변경이면 이전 상태로 돌아갑니다. 이미 뜬 알림은 지울 수 없습니다.</p>
+      <textarea class="input message" rows="2" placeholder="정정 안내 (선택) — 예: 앞서 보낸 안내는 잘못 보낸 것입니다"></textarea>
+      <div class="hint small" data-correction-hint style="margin-top:6px">비워 두면 취소만 합니다.</div>
+      ${dialogActs([['cancel', '닫기'], ['ok', '안내 취소', 'font-weight:700;color:#C9504A']])}`,
+      (box) => { box.querySelector('[data-correction-hint]').textContent = box.querySelector('textarea').value.trim() ? '같은 대상에게 이 내용으로 새 안내를 보냅니다.' : '비워 두면 취소만 합니다.'; });
+    if (!r) return;
+    try {
+      await cancelNotice(e, n, r.value);
+      hint(r.value ? '안내를 취소하고 정정 안내를 보냈습니다.' : '안내를 취소했습니다.');
     } catch (err) { hint(err.message); }
   } else if (a === 'pick-zone') {
     state.zone = t.dataset.zone || null; state.queue = null; renderForm(e);
