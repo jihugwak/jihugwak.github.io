@@ -71,7 +71,7 @@ input { font: inherit; color: inherit; }
 .input::placeholder { color: var(--hint); font-size: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 .input.code { text-transform: uppercase; }
 .input.ticket { height: auto; padding: 14px 16px; font-size: 36px; font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-.input.ticket::placeholder { font-size: 22px; font-weight: 500; }
+.input.ticket::placeholder { font-size: 20px; font-weight: 400; } /* 칸 안은 예시 숫자만 가늘게 (ticket_entry.dart) */
 
 /* FilledButton: 최소 높이 44, 15/600, 모서리 12 */
 .filled { min-height: 44px; padding: 0 18px; border-radius: 12px; background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }

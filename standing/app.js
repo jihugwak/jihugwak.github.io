@@ -644,7 +644,7 @@ function viewEntry(r) {
       <div id="ticket-block" ${seated ? 'hidden' : ''}>
         <div style="height:24px"></div>
         <div class="section-title">입장번호</div>
-        <input id="ticket" class="input ticket" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="번호 입력" value="${p && !p.seated ? p.ticket : ''}" ${locked ? 'readonly' : ''}>
+        <input id="ticket" class="input ticket" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="예: 123" value="${p && !p.seated ? p.ticket : ''}" ${locked ? 'readonly' : ''}>
         <div id="preview"></div>
       </div>
       <div id="ticket-error"></div>
