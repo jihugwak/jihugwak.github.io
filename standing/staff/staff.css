@@ -5,16 +5,7 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .spacer { flex: 1; }
 .small { font-size: 12px; }
 
-/* 내 공연 카드 */
-.staff-event { padding: 16px; cursor: pointer; }
-.staff-event .row { display: flex; align-items: center; gap: 6px; }
-.staff-event .row b { flex: 1; font-size: 17px; font-weight: 600; }
-.staff-event .ok { color: var(--green); }
-.staff-empty { padding: 28px 16px; text-align: center; }
 .filled.secondary { background: var(--card); color: var(--text); }
-
-/* 스태프 코드 입력 */
-.input.staff-code { text-align: center; font-size: 22px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; }
 
 /* 공연 시작 카드 · 입장 예정 줄 */
 .staff-time { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 16px; font-size: 15px; }
@@ -74,11 +65,8 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 /* textarea 는 기본이 고정폭 글꼴 → 본문 글꼴 */
 textarea { font: inherit; color: inherit; }
 
-/* 콘솔 아래 탭 (console.dart NavigationBar): 아이콘만 28, 고른 탭은 파랑 (배경 표시 없음) */
+/* 콘솔 아래 탭: 관객 웹 하단바(.tabbar · .tab)와 같은 모양 — 아이콘 + 작은 글자 */
 main:has(.console-tabs) { padding-bottom: calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
-.console-tabs .tab { height: 52px; }
-.console-tabs .tab .mi { font-size: 28px; }
-.console-tabs .tab.on { color: var(--accent); }
 .divider-full.thick { height: 2px; }
 .staff-notice .cancel-notice { flex: none; color: #C9504A; padding: 4px 8px; min-height: 32px; font-size: 14px; }
 .staff-notice .cancel-notice:disabled { color: var(--disabled-fg); }

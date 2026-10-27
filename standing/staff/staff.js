@@ -350,53 +350,40 @@ const dialogActs = (items) => `<div class="acts">${items.map(([id, label, style 
 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
-  if (parts[0] === 'add') return { name: 'add' };
   if (parts[0] === 'e' && parts[1]) return { name: 'console', code: parts[1].toUpperCase(), sent: parts[2] === 'sent' };
   return { name: 'home' };
 }
 const go = (hash) => { location.hash = hash; };
 
 // root.dart: 내 공연 + [공연 추가]
+// root.dart: 관객 웹 홈과 같은 구성 — 맨 위 스태프 코드 + [추가], 아래 내 공연 카드 (길게 누르면 삭제)
 function viewHome() {
   const mine = myEvents();
   const cards = mine.map((e) => `
-    <div class="card staff-event" data-go="#/e/${e.code}">
-      <div class="row">${ic('verified', '', 18).replace('class="mi', 'class="ok mi')}<b>${esc(e.title)}</b>${ic('chevron_right').replace('class="mi', 'class="hint mi')}</div>
-      <div class="hint" style="margin-top:6px">${koreanShort(new Date(showStart(e)))} · ${esc(e.venue)}</div>
-      <div class="hint" style="font-size:13px">구역 ${e.zones.length}개 · 대기줄 ${e.zones.reduce((n, z) => n + z.queues.length, 0)}개</div>
-      <div style="height:12px"></div>
-      <button class="filled big" data-go="#/e/${e.code}">${ic('campaign')}<span>안내 보내기</span></button>
-    </div>`).join('<div style="height:14px"></div>');
+    <div class="card event-card" data-card="${e.code}" data-go="#/e/${e.code}">
+      <h3>${esc(e.title)}</h3>
+      <div class="meta" style="margin-top:8px">${ic('calendar_today', 'outlined')}<span>${koreanShort(e.date)}</span></div>
+      ${e.venue ? `<div class="meta" style="margin-top:4px">${ic('place', 'outlined')}<span>${esc(e.venue)}</span></div>` : ''}
+      <div class="meta" style="margin-top:4px">${ic('view_agenda', 'outlined')}<span>구역 ${e.zones.length}개 · 대기줄 ${e.zones.reduce((n, z) => n + z.queues.length, 0)}개</span></div>
+      <div style="height:10px"></div>
+      <div style="text-align:right"><button class="filled" data-go="#/e/${e.code}">열기</button></div>
+    </div>`).join('');
   const foot = state.refreshError
     ? `공연 정보를 갱신하지 못했습니다 (${esc(state.refreshError)}). 저장된 정보로 동작합니다.`
     : state.lastRefresh ? `마지막 업데이트 ${timeShort(state.lastRefresh)}` : '';
   return `${appbar('현장 스태프')}
-    <div class="body" style="padding-top:20px">
-      ${db ? '' : `${errorLine('안내 서버가 설정되지 않았습니다.')}<div style="height:16px"></div>`}
-      <div class="staff-h">내 공연</div>
-      ${mine.length ? cards : `<div class="card staff-empty">${ic('vpn_key', 'outlined', 44).replace('class="mi', 'class="hint mi')}
-          <div style="font-size:17px;font-weight:600;margin-top:12px">아직 들어간 공연이 없습니다</div>
-          <div class="hint" style="margin-top:4px">주최 측에서 받은 스태프 코드로 공연을 추가하세요.</div></div>`}
-      <div style="height:${mine.length ? 22 : 20}px"></div>
-      <button class="filled big${mine.length ? ' secondary' : ''}" data-go="#/add">${ic('add')}<span>공연 추가</span></button>
+    <div class="body">
+      ${db ? '' : `${errorLine('안내 서버가 설정되지 않았습니다.')}<div style="height:12px"></div>`}
+      <form class="code-row" data-form="login">
+        <input id="staff-code" class="input code" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="스태프 코드">
+        <button class="filled" type="submit" ${state.loginBusy ? 'disabled' : ''}>${state.loginBusy ? '확인 중' : '추가'}</button>
+      </form>
+      <div id="login-error">${state.loginError ? `<div style="height:8px"></div>${errorLine(state.loginError)}` : ''}</div>
+      <div class="section">내 공연</div>
+      ${mine.length ? `<div class="cards">${cards}</div>`
+        : `<div class="empty">${ic('vpn_key', 'outlined')}<p><b style="font-weight:600;font-size:15px">아직 들어간 공연이 없습니다</b><br>주최 측에서 받은 스태프 코드를 입력하면<br>여기에 공연이 추가됩니다.</p></div>`}
       <div style="height:16px"></div>
       <div class="hint" style="font-size:12px">${foot}</div>
-    </div>`;
-}
-
-// login.dart: 스태프 코드만으로 공연을 찾아 들어간다
-function viewAdd() {
-  return `${appbar('공연 추가', { back: '#/' })}
-    <div class="body" style="padding-top:20px">
-      <div class="section-title" style="margin-bottom:12px">스태프 코드</div>
-      <form class="card" style="padding:16px" data-form="login">
-        <div class="hint">주최 측에서 받은 스태프 코드를 입력하세요. 코드만 넣으면 해당 공연으로 바로 들어갑니다.</div>
-        <div style="height:14px"></div>
-        <input id="staff-code" class="input staff-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="스태프 코드" autofocus>
-        <div id="login-error">${state.loginError ? errorLine(state.loginError) : ''}</div>
-      </form>
-      <div style="height:20px"></div>
-      <button class="filled big" data-action="login" ${state.loginBusy ? 'disabled' : ''}>${ic('lock_open')}<span>${state.loginBusy ? '확인 중…' : '들어가기'}</span></button>
     </div>`;
 }
 
@@ -404,12 +391,13 @@ function viewAdd() {
 // 두 탭을 모두 그려 두고 숨기기만 한다 (탭을 오가도 입력 중인 값이 남게).
 // 보낸 안내(SentNoticesView)는 #/e/코드/sent — 콘솔 위에 덮는 화면이라 돌아와도 입력 중인 값이 남는다.
 function viewConsole(e) {
-  const tab = (id, icon, label) => `<button class="tab ${state.tab === id ? 'on' : ''}" data-action="tab" data-tab="${id}" aria-label="${label}" title="${label}">${ic(icon, state.tab === id ? '' : 'outlined')}</button>`;
+  // 관객 웹 하단바와 같은 모양: 아이콘 + 작은 글자
+  const tab = (id, icon, label) => `<button class="tab ${state.tab === id ? 'on' : ''}" data-action="tab" data-tab="${id}">${ic(icon, state.tab === id ? '' : 'outlined')}<span>${label}</span></button>`;
   return `<div id="console-main">${appbar('현장 안내', { back: '#/', actions: `<button class="icon-btn" data-action="leave" aria-label="나가기" title="나가기">${ic('delete', 'outlined')}</button>` })}
     <nav class="tabbar console-tabs"><div>${tab('entry', 'door_front', '입장 관리')}${tab('notice', 'campaign', '안내 보내기')}</div></nav>
-    <div class="body" id="page-entry" style="padding-top:20px"${state.tab === 'entry' ? '' : ' hidden'}>
+    <div class="body" id="page-entry"${state.tab === 'entry' ? '' : ' hidden'}>
       <div style="font-size:22px;font-weight:700">${esc(e.title)}</div>
-      <div class="hint" id="show-sub">${koreanShort(new Date(showStart(e)))} · ${esc(e.venue)}</div>
+      <div class="hint" id="show-sub" style="font-size:14px;margin-top:4px">${koreanShort(new Date(showStart(e)))} · ${esc(e.venue)}</div>
       <div style="height:16px"></div>
       <div id="show-card">${showCard(e)}</div>
       <div style="height:16px"></div>
@@ -419,16 +407,16 @@ function viewConsole(e) {
       <div id="entry-cards">${e.zones.map((z) => entryCard(e, z)).join('<div style="height:10px"></div>')}</div>
       <div style="height:14px"></div>
     </div>
-    <div class="body" id="page-notice" style="padding-top:20px"${state.tab === 'notice' ? '' : ' hidden'}>
+    <div class="body" id="page-notice"${state.tab === 'notice' ? '' : ' hidden'}>
       <div class="staff-h" style="margin-bottom:16px">안내 보내기</div>
       <div id="send-form">${sendForm(e)}</div>
 
       <div style="height:28px"></div>
-      <div class="card"><button class="tile two" data-go="#/e/${esc(e.code)}/sent"><span style="color:var(--accent);display:flex">${ic('history')}</span><span class="t"><b>보낸 안내</b><small id="sent-count">${sentCount()}</small></span>${ic('chevron_right', '', 24).replace('class="mi', 'class="chev mi')}</button></div>
+      <div class="card"><button class="tile two" data-go="#/e/${esc(e.code)}/sent"><span class="tile-icon">${ic('history')}</span><span class="t"><b>보낸 안내</b><small id="sent-count">${sentCount()}</small></span>${ic('chevron_right', '', 24).replace('class="mi', 'class="chev mi')}</button></div>
       <div style="height:24px"></div>
     </div></div>
     <div id="console-sent" hidden>${appbar('보낸 안내', { back: `#/e/${esc(e.code)}` })}
-      <div class="body" style="padding-top:20px">
+      <div class="body">
         <div class="hint" style="font-size:12px">최근 24시간 · 다른 스태프가 보낸 것도 보입니다</div>
         <div style="height:12px"></div>
         <div id="notice-list">${noticeList()}</div>
@@ -606,8 +594,7 @@ function render() {
     startNotices(e.code);
     return;
   }
-  $app.innerHTML = r.name === 'add' ? viewAdd() : viewHome();
-  if (r.name === 'add') document.getElementById('staff-code')?.focus();
+  $app.innerHTML = viewHome();
 }
 
 // ───────── 이벤트 ─────────
@@ -688,10 +675,14 @@ async function adjustTime(title, current, target, show) {
 $app.addEventListener('click', async (ev) => {
   const t = ev.target.closest('[data-go], [data-action]');
   if (!t || t.disabled) return;
-  if (t.dataset.go != null && !t.dataset.action) { ev.stopPropagation(); go(t.dataset.go); return; }
+  if (t.dataset.go != null && !t.dataset.action) {
+    ev.stopPropagation();
+    if (longPressed) { longPressed = false; return; } // 길게 눌러 삭제 창을 띄운 경우
+    go(t.dataset.go);
+    return;
+  }
   const a = t.dataset.action;
   const e = currentEvent();
-  if (a === 'login') return doLogin();
   if (!e) return;
   const z = t.dataset.zone ? zoneOf(e, t.dataset.zone) : null;
   const q = z ? queueOf(z, t.dataset.queue) : null;
@@ -774,6 +765,7 @@ $app.addEventListener('change', (ev) => {
 $app.addEventListener('input', (ev) => {
   if (ev.target.id === 'staff-code') {
     if (state.loginError) { state.loginError = null; document.getElementById('login-error').innerHTML = ''; }
+    ev.target.value = ev.target.value.toUpperCase().replace(/\s/g, '');
     return;
   }
   const e = currentEvent();
@@ -782,12 +774,29 @@ $app.addEventListener('input', (ev) => {
 $app.addEventListener('submit', (ev) => { ev.preventDefault(); if (ev.target.dataset.form === 'login') doLogin(); });
 $app.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.id === 'staff-code') { ev.preventDefault(); doLogin(); } });
 
+// 내 공연 카드 길게 누르기 → 이 기기에서 스태프 코드 삭제 (root.dart _StaffEventCard onLongPress, 관객 웹과 같게)
+let pressTimer = null, longPressed = false;
+$app.addEventListener('pointerdown', (ev) => {
+  const card = ev.target.closest('[data-card]');
+  if (!card || ev.target.closest('button')) return;
+  longPressed = false;
+  pressTimer = setTimeout(async () => {
+    longPressed = true;
+    const e = eventByCode(card.dataset.card);
+    const r = await modal(`<h3>${esc(e?.title ?? '')}을(를) 목록에서 삭제할까요?</h3>
+      <p class="hint" style="font-size:14px">이 기기에서 스태프 코드를 지웁니다. 다시 들어가려면 코드를 입력해야 합니다.</p>
+      ${dialogActs([['cancel', '취소'], ['ok', '삭제', 'color:var(--red)']])}`);
+    if (r) { logout(card.dataset.card); render(); }
+  }, 550);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => $app.addEventListener(t, () => clearTimeout(pressTimer)));
+$app.addEventListener('contextmenu', (ev) => { if (ev.target.closest('[data-card]')) ev.preventDefault(); });
+
 window.addEventListener('hashchange', () => {
   const r = route();
   // 같은 공연의 콘솔 ↔ 보낸 안내: 화면을 새로 그리지 않는다 (입력 중인 값 유지)
   if (r.name === 'console' && watching === r.code && document.getElementById('console-main')) { showSent(r.sent); return; }
   if (r.name !== 'console') stopNotices();
-  if (r.name === 'add') state.loginError = null;
   if (r.name === 'console' && watching !== r.code) { state.zone = null; state.queue = null; state.useRange = false; state.sendError = null; }
   render();
   window.scrollTo(0, 0);
