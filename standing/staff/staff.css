@@ -33,7 +33,7 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .entry-row .row .hint { font-size: 13px; }
 .entry-row .entry-time { margin-top: 4px; }
 .entry-row .btns { display: flex; gap: 10px; margin-top: 8px; }
-.entry-row .btns > * { flex: 1; min-height: 40px; }
+.entry-row .btns > * { flex: 1; min-height: 40px; font-weight: 800; } /* console.dart _entryLabel */
 .state { padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: 700; color: var(--hint); background: color-mix(in srgb, var(--hint) 14%, transparent); }
 .state.open { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .state.closed { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
