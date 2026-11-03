@@ -610,7 +610,7 @@ function viewHome() {
     </div>`;
   }).join('');
 
-  return `${appbar('입장번호', { actions: `<button class="icon-btn" data-action="notices" aria-label="알림">${ic(unread ? 'notifications_active' : 'notifications_none')}${unread ? '<span class="badge"></span>' : ''}</button>` })}
+  return `${appbar('STANBY', { actions: `<button class="icon-btn" data-action="notices" aria-label="알림">${ic(unread ? 'notifications_active' : 'notifications_none')}${unread ? '<span class="badge"></span>' : ''}</button>` })}
     <div class="body">
       <form class="code-row" data-form="code">
         <input id="code" class="input code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="공연 코드 6자리">
@@ -922,7 +922,7 @@ async function handleScan(raw) {
   if (code && !e) { await loadCatalog(); e = eventByCode(code); }
   const err = document.getElementById('scan-error');
   if (!e) {
-    if (err) err.innerHTML = `<div class="error" style="margin:0 0 8px">${esc(code ? `공연 코드 ${code} 를 찾을 수 없습니다.` : '입장번호 앱의 참가 QR 이 아닙니다.')}</div>`;
+    if (err) err.innerHTML = `<div class="error" style="margin:0 0 8px">${esc(code ? `공연 코드 ${code} 를 찾을 수 없습니다.` : 'STANBY 참가 QR 이 아닙니다.')}</div>`;
     return;
   }
   await stopScanner();
@@ -1100,7 +1100,7 @@ $app.addEventListener('click', async (ev) => {
   } else if (a === 'leave') {
     leaveEvent();
   } else if (a === 'provider') {
-    dialog('예매처 계정 연결', '예매처 계정 연결은 입장번호 앱에서 할 수 있습니다.');
+    dialog('예매처 계정 연결', '예매처 계정 연결은 STANBY 앱에서 할 수 있습니다.');
   }
 });
 
