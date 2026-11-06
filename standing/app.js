@@ -631,10 +631,7 @@ function viewHome() {
       </form>
       <div id="code-error"></div>
       <div class="page-section">내 공연${my.length ? `<span>${my.length}</span>` : ''}</div>
-      ${cards ? `<div class="cards">${cards}</div>`
-        : `<div class="empty-hero"><div class="circle">${ic('qr_code_scanner', 'round', 34)}</div><h2>공연장 QR을 스캔하세요</h2>
-            <p>QR을 찍거나 공연 코드를 넣으면<br>여기에 공연이 추가됩니다.</p>
-            <button class="filled big" data-go="#/scan">${ic('qr_code_scanner', 'round')}<span>QR 찍어서 추가</span></button></div>`}
+      ${cards ? `<div class="cards">${cards}</div>` : ''}
     </div>`;
 }
 
@@ -659,7 +656,7 @@ function viewEntry(r) {
       <div id="ticket-block" ${seated ? 'hidden' : ''}>
         <div style="height:24px"></div>
         <div class="section-title">입장번호</div>
-        <input id="ticket" class="input ticket" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="예: 123" value="${p && !p.seated ? p.ticket : ''}" ${locked ? 'readonly' : ''}>
+        <input id="ticket" class="input ticket" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="번호 입력" value="${p && !p.seated ? p.ticket : ''}" ${locked ? 'readonly' : ''}>
         <div id="preview"></div>
       </div>
       <div id="ticket-error"></div>
