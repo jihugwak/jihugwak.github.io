@@ -345,6 +345,12 @@ const CD = {
   show: { what: '공연까지', soon: '', small: '공연 시작', icon: 'theater_comedy' },
   line: { what: '줄서기까지', soon: '곧 줄서기가 시작됩니다', small: '줄서기 시작', icon: 'groups' },
 };
+// 카드 안 디지털 시계 (home.dart EntryCountdown compact): "57일 20:52:34" / "01:29:05"
+const compactClock = (at, mode = '') => {
+  const t = Math.max(0, Math.floor((at - Date.now()) / 1000));
+  if (t < 1) return `<b class="soon">${CD[mode].soon}</b>`;
+  return `<small>${CD[mode].what}</small><b>${t >= 86400 ? Math.floor(t / 86400) + '일 ' : ''}${pad(Math.floor((t % 86400) / 3600))}:${pad(Math.floor((t % 3600) / 60))}:${pad(t % 60)}</b>`;
+};
 const countdownBig = (at, mode = '') => {
   const left = at - Date.now();
   if (left < 1000) return CD[mode].soon;
@@ -384,7 +390,7 @@ function showCountdown(big = false) {
 
 function countdownBox(at, big, mode) {
   if (big) return `<div class="entry-clock"><div data-clock="${at}" data-mode="${mode}">${clockInner(at, mode)}</div></div>`;
-  return `<div class="entry-countdown">${ic(CD[mode].icon)}<b data-countdown="${at}" data-mode="${mode}">${countdownBig(at, mode)}</b><span class="hint">${timeShort(new Date(at))} ${CD[mode].small}</span></div>`;
+  return `<div class="entry-countdown" aria-label="${countdownBig(at, mode)}">${ic(CD[mode].icon)}<span class="clk" data-countdown="${at}" data-mode="${mode}">${compactClock(at, mode)}</span><span class="hint">${timeShort(new Date(at))} ${CD[mode].small}</span></div>`;
 }
 
 // home.dart countdownText: "2일 3시간 04분 05초" / "1시간 04분 05초" / "4분 05초" / "5초"
@@ -552,6 +558,8 @@ function standingToggle(c, compact = false) {
   const cls = `filled big${compact ? ' compact' : ''}`;
   const left = c.z.entryAt ? c.z.entryAt.getTime() - Date.now() : 0; // 구역마다 다를 수 있다
   if (!c.p.standing && left > 0) {
+    // 카드 안(홈)에서는 바로 위 카운트다운이 남은 시간을 보여 주니 짧게
+    if (compact) return `<button class="${cls}" disabled>${ic('schedule')}<span>줄서기 시작 전</span></button>`;
     return `<button class="${cls}" disabled>${ic('schedule')}<span>줄서기 ${remainingText(left)} 뒤 시작</span></button>
       <div class="hint center" style="font-size:12px;margin-top:4px">${koreanShort(c.z.entryAt)} 부터 줄설 수 있습니다.</div>`;
   }
@@ -567,6 +575,15 @@ const appbar = (title, { back, lead = '', actions = '' } = {}) => `
     <h1>${esc(title)}</h1>
     <div class="acts">${actions}</div>
   </header>`;
+
+// 탭 첫 화면 머리 (standing_core largeTitleBar): 왼쪽 큰 제목 28 · w800
+const largeBar = (title, actions = '') => `
+  <header class="appbar large"><h1>${esc(title)}</h1><div class="acts">${actions}</div></header>`;
+
+// 공연 카드 머리 (EventCardHeader): 제목 19 · w800 + 날짜 · 장소, 오른쪽 화살표
+const cardHeader = (title, date, venue) => `<div class="card-head"><div><h3>${esc(title)}</h3><div class="sub">${esc([date, venue].filter(Boolean).join(' · '))}</div></div>${ic('chevron_right', 'round')}</div>`;
+// 큰 번호 (BigFigure): 위 작은 글 + 큰 숫자
+const bigFigure = (label, value, suffix = '', size = 44) => `<div class="figure"><small>${esc(label)}</small><b style="font-size:${size}px">${esc(value)}${suffix ? `<i>${suffix}</i>` : ''}</b></div>`;
 
 // ───────── 화면 (lib/ui/*.dart 를 그대로) ─────────
 
@@ -589,37 +606,35 @@ function viewHome() {
   const cards = my.map((e) => {
     const joined = c && c.e.code === e.code;
     return `<div class="card event-card" data-card="${e.code}" data-go="${joined ? '#/q' : '#/e/' + e.code}">
-      <h3>${esc(e.title)}</h3>
-      <div class="meta" style="margin-top:8px">${ic('calendar_today', 'outlined')}<span>${koreanShort(showStart(e))}</span></div>
-      <div class="meta" style="margin-top:4px">${ic('place', 'outlined')}<span>${esc(e.venue)}</span></div>
-      <div style="height:14px"></div>
+      ${cardHeader(e.title, koreanShort(showStart(e)), e.venue)}
+      <div style="height:18px"></div>
       ${joined && c.z.seated ? `
         ${entryBanner()}
-        <div class="seat"><span><b>${esc(c.z.name)}</b>&nbsp;&nbsp;<span class="hint">지정석</span></span>
-          <button class="text-btn tight" data-go="#/e/${e.code}/edit">구역 변경</button></div>`
+        <div class="figure-row">${bigFigure('내 구역 · 지정석', c.z.name, '', 34)}<button class="text-btn tight" data-go="#/e/${e.code}/edit">구역 변경</button></div>`
       : joined ? `
         ${entryBanner()}
         ${duplicateWarning(c)}
-        <div class="seat"><span><span class="hint">${esc(c.z.name)} · ${esc(c.q.name)}&nbsp;&nbsp;</span><b>${c.p.ticket}번</b></span>
-          <button class="text-btn tight" data-go="#/e/${e.code}/edit">번호 수정</button></div>
-        <div style="height:10px"></div>
-        ${standingToggle(c, true)}
-        <div style="height:4px"></div>
-        <div class="links"><button class="text-btn" data-go="#/line">${ic('grid_view', 'round')}내 자리 찾기</button></div>`
-      : `<div style="text-align:right"><button class="filled" data-go="#/e/${e.code}">번호 입력</button></div>`}
+        <div class="figure-row">${bigFigure(`${c.z.name} · ${c.q.name}`, String(c.p.ticket), '번')}<button class="text-btn tight" data-go="#/e/${e.code}/edit">번호 수정</button></div>
+        <div style="height:16px"></div>
+        ${standingToggle(c, true)}`
+      : `<button class="filled big compact" data-go="#/e/${e.code}">${ic('dialpad', 'round')}<span>번호 입력</span></button>
+        <div class="hint center" style="font-size:12px;margin-top:8px">티켓의 입장번호를 넣으면 내 대기줄을 알려 드려요</div>`}
     </div>`;
   }).join('');
 
-  return `${appbar('STANBY', { actions: `<button class="icon-btn" data-action="notices" aria-label="알림">${ic(unread ? 'notifications_active' : 'notifications_none')}${unread ? '<span class="badge"></span>' : ''}</button>` })}
+  return `${largeBar('STANBY', `<button class="icon-btn" data-go="#/scan" aria-label="QR 스캔">${ic('qr_code_scanner', 'round', 26)}</button><button class="icon-btn" data-action="notices" aria-label="알림">${ic(unread ? 'notifications_active' : 'notifications_none', unread ? '' : 'round', 26)}${unread ? '<span class="badge"></span>' : ''}</button>`)}
     <div class="body">
-      <form class="code-row" data-form="code">
-        <input id="code" class="input code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="공연 코드 6자리">
+      <form class="code-bar" data-form="code">
+        ${ic('confirmation_number', 'outlined', 22)}
+        <input id="code" class="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="공연 코드 6자리">
         <button class="filled" type="submit">추가</button>
       </form>
       <div id="code-error"></div>
-      <div class="section">내 공연</div>
+      <div class="page-section">내 공연${my.length ? `<span>${my.length}</span>` : ''}</div>
       ${cards ? `<div class="cards">${cards}</div>`
-        : `<div class="empty">${ic('confirmation_number', 'outlined')}<p>공연장 QR을 스캔하거나 공연 코드를 입력하면<br>여기에 공연이 추가됩니다.</p></div>`}
+        : `<div class="empty-hero"><div class="circle">${ic('qr_code_scanner', 'round', 34)}</div><h2>공연장 QR을 스캔하세요</h2>
+            <p>QR을 찍거나 공연 코드를 넣으면<br>여기에 공연이 추가됩니다.</p>
+            <button class="filled big" data-go="#/scan">${ic('qr_code_scanner', 'round')}<span>QR 찍어서 추가</span></button></div>`}
     </div>`;
 }
 
@@ -848,23 +863,31 @@ const PROVIDERS = [
 function viewAccount() {
   const c = current();
   const rows = (items) => items.filter(Boolean).join('<div class="divider"></div>');
-  const mine = c ? rows([
-    `<div class="tile two"><span class="t"><b style="font-weight:600">${esc(c.e.title)}</b><small>${c.q ? `${esc(c.z.name)} · ${esc(c.q.name)} · ${c.p.ticket}번` : `${esc(c.z.name)} · 지정석`}</small></span></div>`,
-    // 지정석은 줄이 없다
-    c.q && `<label class="tile two">${ic('person_pin_circle', 'outlined')}<span class="t"><b>줄에 서 있음</b><small>켜면 줄 현황에 내 위치가 표시됩니다.</small></span>
-      <span class="switch"><input type="checkbox" data-action="stand-switch" ${c.p.standing ? 'checked' : ''}><i></i></span></label>`,
-    `<button class="tile" data-action="leave"><span class="mi material-icons" style="color:var(--red)">logout</span><span class="t"><b style="color:var(--red)">공연에서 나가기</b></span></button>`,
-  ]) : `<div class="tile"><span class="t"><b class="hint">참가 중인 공연이 없습니다.</b></span></div>`;
+  // 홈 내 공연 카드와 같은 머리 + 큰 번호. 누르면 대기줄 확인
+  const mine = c ? `<div class="card event-card" data-go="#/q">
+      ${cardHeader(c.e.title, koreanShort(showStart(c.e)), c.e.venue)}
+      <div style="height:16px"></div>
+      ${c.q ? bigFigure(`${c.z.name} · ${c.q.name}`, String(c.p.ticket), '번', 36) : bigFigure('내 구역 · 지정석', c.z.name, '', 30)}
+    </div>
+    <div class="card group" style="margin-top:12px">${rows([
+      // 지정석은 줄이 없다
+      c.q && `<label class="tile two"><span class="tile-icon">${ic('person_pin_circle', 'outlined')}</span><span class="t"><b>줄에 서 있음</b><small>켜면 줄 현황에 내 위치가 표시됩니다.</small></span>
+        <span class="switch"><input type="checkbox" data-action="stand-switch" ${c.p.standing ? 'checked' : ''}><i></i></span></label>`,
+      `<button class="tile" data-action="leave"><span class="tile-icon red">${ic('logout', 'round')}</span><span class="t"><b style="color:var(--red)">공연에서 나가기</b></span></button>`,
+    ])}</div>`
+    : `<div class="card group"><div class="tile two"><span class="tile-icon">${ic('confirmation_number', 'outlined')}</span><span class="t"><b>참가 중인 공연이 없습니다</b><small>홈에서 공연을 추가하고 번호를 넣어 주세요.</small></span></div></div>`;
   const providers = rows(PROVIDERS.map((p) => `
     <button class="tile two" data-action="provider"><span class="logo"><img src="providers/${p.name}.png" alt=""></span>
       <span class="t"><b>${p.label}</b><small>연결된 계정 없음</small></span>${ic('chevron_right', '', 20)}</button>`));
-  return `${appbar('계정')}
-    <div class="group-header">내 참가</div>
-    <div class="card group">${mine}</div>
-    <div class="group-header">예매처 계정 연결</div>
-    <div class="card group">${providers}</div>
-    <div class="group-footer">예매처와 API 제휴가 되면 연결한 계정의 예매 내역에서 공연·구역·입장번호가 자동으로 채워집니다. 예매처 계정 연결은 앱에서 할 수 있습니다.</div>
-    <div style="height:32px"></div>`;
+  return `${largeBar('계정')}
+    <div class="body">
+      <div class="group-header">내 참가</div>
+      ${mine}
+      <div class="group-header" style="margin-top:28px">예매처 계정 연결</div>
+      <div class="card group">${providers}</div>
+      <div class="group-footer">예매처와 API 제휴가 되면 연결한 계정의 예매 내역에서 공연·구역·입장번호가 자동으로 채워집니다. 예매처 계정 연결은 앱에서 할 수 있습니다.</div>
+      <div style="height:32px"></div>
+    </div>`;
 }
 
 // qr_join.dart
@@ -946,7 +969,7 @@ function viewNotices() {
   </div>`;
 }
 
-// root.dart 하단바: 홈 · QR 스캔 · 계정
+// root.dart 하단바: 홈 · 계정
 function renderTabbar() {
   const r = route().name;
   const onAccount = r === 'account';
@@ -956,7 +979,6 @@ function renderTabbar() {
   document.body.classList.toggle('no-tab', noTab);
   $tabbar.innerHTML = `<div>
     <button class="tab ${onAccount ? '' : 'on'}" data-go="#/">${ic(onAccount ? 'home' : 'home', onAccount ? 'outlined' : 'round')}<span>홈</span></button>
-    <button class="tab-qr" data-go="#/scan" aria-label="QR 스캔"><span>${ic('qr_code_scanner', 'round')}</span></button>
     <button class="tab ${onAccount ? 'on' : ''}" data-go="#/account">${ic('account_circle', onAccount ? '' : 'outlined')}<span>계정</span></button>
   </div>`;
 }
@@ -1227,7 +1249,7 @@ window.addEventListener('hashchange', () => {
 
 // 입장까지 남은 시간: 1초마다 글자만 바꾼다 (화면 전체를 다시 그리지 않는다)
 setInterval(() => {
-  document.querySelectorAll('[data-countdown]').forEach((el) => { el.textContent = countdownBig(Number(el.dataset.countdown), el.dataset.mode); });
+  document.querySelectorAll('[data-countdown]').forEach((el) => { el.innerHTML = compactClock(Number(el.dataset.countdown), el.dataset.mode); });
   document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock), el.dataset.mode); });
 }, 1000);
 

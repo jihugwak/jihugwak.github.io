@@ -50,6 +50,10 @@ input { font: inherit; color: inherit; }
 .appbar h1 { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 600; white-space: nowrap; }
 .appbar .lead { grid-column: 1; justify-self: center; }
 .appbar .acts { grid-column: 3; display: flex; align-items: center; justify-content: flex-end; padding-right: 4px; }
+/* 탭 첫 화면 큰 제목 (largeTitleBar): 높이 60, 왼쪽 20, 28 · w800 */
+.appbar.large { height: calc(60px + env(safe-area-inset-top)); grid-template-columns: 1fr auto; padding-left: 20px; }
+.appbar.large h1 { grid-column: 1; text-align: left; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+.appbar.large .acts { grid-column: 2; padding-right: 8px; }
 .appbar.wide { grid-template-columns: 140px 1fr 140px; }
 .icon-btn { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; position: relative; }
 .icon-btn:active { background: rgba(127, 127, 127, 0.15); }
@@ -61,6 +65,7 @@ input { font: inherit; color: inherit; }
 #snack[hidden] { display: none; }
 .badge { position: absolute; top: 12px; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: #B3261E; }
 .body { padding: 8px 20px 20px; }
+.appbar.large + .body { padding-top: 4px; }
 
 /* 입력칸: 채움 + 모서리 12, 포커스 파란 1.5 */
 .input {
@@ -93,6 +98,34 @@ input { font: inherit; color: inherit; }
 .error .mi { font-size: 18px; align-self: flex-start; }
 
 /* 홈 */
+/* 코드 입력 줄 (CodeEntryBar): 카드색 칸 하나 안에 아이콘 + 입력 + [추가] */
+.code-bar { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 6px 0 16px; border-radius: 14px; background: var(--card); }
+.code-bar > .mi { color: var(--hint); }
+.code-bar input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; font-size: 18px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+.code-bar input::placeholder { color: var(--hint); font-size: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.code-bar input:focus::placeholder { color: transparent; }
+.code-bar .filled { height: 44px; padding: 0 18px; border-radius: 10px; font-size: 16px; font-weight: 700; flex: none; }
+/* 큰 소제목 (PageSection): 22 · w800, 오른쪽 개수 */
+.page-section { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; margin: 32px 0 14px; }
+.page-section span { margin-left: 8px; font-size: 15px; font-weight: 600; color: var(--hint); }
+/* 빈 화면 (EmptyHero) */
+.empty-hero { text-align: center; padding: 36px 0; }
+.empty-hero .circle { width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+.empty-hero h2 { margin: 18px 0 0; font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
+.empty-hero p { margin: 8px 0 0; font-size: 15px; line-height: 1.5; color: var(--hint); }
+.empty-hero .filled { margin-top: 24px; }
+/* 공연 카드 머리 (EventCardHeader) · 큰 번호 (BigFigure) */
+.card-head { display: flex; align-items: flex-start; gap: 8px; }
+.card-head > div { flex: 1; min-width: 0; }
+.card-head h3 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.25; }
+.card-head .sub { margin-top: 4px; font-size: 14px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-head > .mi { color: var(--hint); margin-top: 2px; }
+.figure small { display: block; font-size: 13px; font-weight: 600; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.figure b { display: block; margin-top: 2px; font-weight: 800; line-height: 1.1; letter-spacing: -1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.figure b i { font-style: normal; font-size: 0.4em; font-weight: 700; letter-spacing: 0; }
+.figure-row { display: flex; align-items: flex-end; }
+.figure-row .figure { flex: 1; min-width: 0; }
+.figure-row .text-btn { min-height: 36px; padding: 0 10px; }
 .code-row { display: flex; gap: 10px; }
 .code-row .filled { height: 52px; padding: 0 20px; font-size: 16px; flex: none; }
 .section { font-size: 20px; font-weight: 700; margin: 28px 0 12px; }
@@ -102,8 +135,8 @@ input { font: inherit; color: inherit; }
 
 /* Card: 카드색, 모서리 16, 그림자 없음 */
 .card { background: var(--card); border-radius: 16px; overflow: hidden; }
-.cards > * + * { margin-top: 12px; }
-.event-card { padding: 18px 18px 14px; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.cards > * + * { margin-top: 14px; }
+.event-card { padding: 20px 20px 18px; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .event-card:active { filter: brightness(0.96); }
 .event-card h3 { margin: 0; font-size: 18px; font-weight: 700; }
 .meta { display: flex; align-items: center; gap: 6px; color: var(--hint); font-size: 14px; }
@@ -153,11 +186,11 @@ button.tile:active { background: rgba(127, 127, 127, 0.12); }
 .tile .chev { color: var(--text); }
 
 /* 계정: 설정 앱처럼 묶음 */
-.group-header { padding: 24px 20px 8px 36px; color: var(--hint); font-size: 13px; }
-.group { margin: 0 16px; }
-.group .divider { height: 0.5px; background: var(--divider); margin-left: 60px; }
-.group-footer { padding: 8px 36px 0; font-size: 12px; line-height: 1.4; color: var(--hint); }
-.logo { width: 32px; height: 32px; border-radius: 8px; background: #fff; border: 0.5px solid var(--outline); overflow: hidden; flex: none; }
+.group-header { padding: 0 4px 8px; color: var(--hint); font-size: 13px; font-weight: 600; }
+.group .divider { height: 0.5px; background: var(--divider); margin-left: 68px; }
+.group-footer { padding: 10px 4px 0; font-size: 12px; line-height: 1.45; color: var(--hint); }
+.tile-icon.red { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.logo { width: 36px; height: 36px; border-radius: 10px; background: #fff; border: 0.5px solid var(--outline); overflow: hidden; flex: none; }
 .logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .switch { position: relative; width: 51px; height: 31px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
@@ -237,9 +270,6 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .tabbar > div { display: flex; width: 100%; max-width: 560px; }
 .tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--hint); font-size: 11px; font-weight: 500; }
 .tab.on { color: var(--accent); font-weight: 600; }
-.tab-qr { flex: 1; height: 56px; display: grid; place-items: center; }
-.tab-qr span { width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(47, 107, 255, 0.25); }
-.tab-qr .mi { font-size: 26px; }
 
 /* QR 스캔 */
 .scanner { background: #000; aspect-ratio: 1 / 1; max-height: 58vh; width: 100%; overflow: hidden; display: grid; place-items: center; color: #fff; text-align: center; padding: 0; }
@@ -277,8 +307,12 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 /* 입장까지 남은 시간 (home.dart EntryCountdown) */
 .entry-countdown { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 12px; border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
-.entry-countdown .mi { font-size: 18px; }
-.entry-countdown b { flex: 1; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.entry-countdown { gap: 10px; }
+.entry-countdown .mi { font-size: 20px; }
+.entry-countdown .clk { flex: 1; min-width: 0; }
+.entry-countdown .clk small { display: block; font-size: 12px; font-weight: 600; color: var(--hint); }
+.entry-countdown .clk b { display: block; font-size: 20px; line-height: 1.2; font-weight: 800; font-variant-numeric: tabular-nums; }
+.entry-countdown .clk b.soon { font-size: 15px; font-weight: 700; }
 .entry-countdown .hint { font-size: 12px; }
 /* 대기줄 확인 화면의 디지털 시계 (home.dart EntryCountdown) */
 .entry-clock { text-align: center; }

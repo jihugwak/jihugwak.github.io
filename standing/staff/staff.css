@@ -7,24 +7,31 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 
 .filled.secondary { background: var(--card); color: var(--text); }
 
-/* 공연 시작 카드 · 입장 예정 줄 */
-.staff-time { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 16px; font-size: 15px; }
+/* 콘솔 머리 (console.dart): 24 · w800 */
+.console-title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.25; }
+/* [시간 조정]: 옅은 파랑 바탕 작은 버튼 */
+.tonal { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 14px; font-weight: 700; }
+.tonal:disabled { background: var(--disabled-bg); color: var(--disabled-fg); }
+
+/* 공연 시작 카드: 위 작은 글 + 큰 시각 · 입장 예정 줄 */
+.staff-time { display: flex; align-items: center; gap: 6px; padding: 16px 16px 16px 20px; }
+.staff-time small { display: block; font-size: 13px; font-weight: 600; }
+.staff-time b { display: block; margin-top: 2px; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; }
+.staff-time b .small { font-size: 13px; font-weight: 500; letter-spacing: 0; }
 .staff-time .t, .entry-time .t { flex: 1; min-width: 0; }
-.entry-time { display: flex; align-items: center; gap: 4px; font-size: 14px; }
-.entry-time .text-btn, .staff-time .text-btn { flex: none; }
+.entry-time { display: flex; align-items: center; gap: 4px; font-size: 14px; margin-top: 8px; }
 
 /* 구역 카드 (입장 관리) */
-.staff-zone { padding: 14px 16px 6px; }
-.zone-head { display: flex; align-items: baseline; gap: 8px; }
-.zone-head b { font-size: 17px; font-weight: 700; }
-.zone-head .hint { font-size: 13px; }
-.entry-row { padding: 10px 0; }
+.staff-zone { padding: 18px 20px 8px; }
+.zone-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.zone-head b { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
+.zone-head .hint { font-size: 13px; font-weight: 600; }
+.entry-row { padding: 12px 0; }
 .entry-row .row { display: flex; align-items: center; gap: 8px; }
-.entry-row .row b { font-size: 16px; font-weight: 600; }
+.entry-row .row b { font-size: 17px; font-weight: 700; }
 .entry-row .row .hint { font-size: 13px; }
-.entry-row .entry-time { margin-top: 4px; }
-.entry-row .btns { display: flex; gap: 10px; margin-top: 8px; }
-.entry-row .btns > * { flex: 1; min-height: 40px; font-weight: 800; } /* console.dart _entryLabel */
+.entry-row .btns { display: flex; gap: 10px; margin-top: 10px; }
+.entry-row .btns > * { flex: 1; height: 48px; font-size: 16px; font-weight: 800; } /* console.dart _entryLabel, 높이 48 */
 .state { padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: 700; color: var(--hint); background: color-mix(in srgb, var(--hint) 14%, transparent); }
 .state.open { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .state.closed { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
@@ -45,7 +52,7 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .chip b, .chip small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 보낸 안내 */
-.staff-notice { display: flex; gap: 12px; padding: 14px; align-items: flex-start; }
+.staff-notice { display: flex; gap: 12px; padding: 16px 12px 8px 16px; align-items: flex-start; }
 .staff-notice .t { flex: 1; min-width: 0; }
 .staff-notice .row { display: flex; align-items: center; }
 .staff-notice .row b { font-size: 15px; font-weight: 700; }

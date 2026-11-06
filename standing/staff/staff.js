@@ -359,31 +359,34 @@ const go = (hash) => { location.hash = hash; };
 // root.dart: 관객 웹 홈과 같은 구성 — 맨 위 스태프 코드 + [추가], 아래 내 공연 카드 (길게 누르면 삭제)
 function viewHome() {
   const mine = myEvents();
+  // 관객 웹 내 공연 카드와 같은 머리 + 큰 숫자 + 아래 꽉 찬 [열기]
+  const fig = (label, n) => `<div class="figure"><small>${label}</small><b style="font-size:32px">${n}<i>개</i></b></div>`;
   const cards = mine.map((e) => `
     <div class="card event-card" data-card="${e.code}" data-go="#/e/${e.code}">
-      <h3>${esc(e.title)}</h3>
-      <div class="meta" style="margin-top:8px">${ic('calendar_today', 'outlined')}<span>${koreanShort(e.date)}</span></div>
-      ${e.venue ? `<div class="meta" style="margin-top:4px">${ic('place', 'outlined')}<span>${esc(e.venue)}</span></div>` : ''}
-      <div class="meta" style="margin-top:4px">${ic('view_agenda', 'outlined')}<span>구역 ${e.zones.length}개 · 대기줄 ${e.zones.reduce((n, z) => n + z.queues.length, 0)}개</span></div>
-      <div style="height:10px"></div>
-      <div style="text-align:right"><button class="filled" data-go="#/e/${e.code}">열기</button></div>
+      <div class="card-head"><div><h3>${esc(e.title)}</h3><div class="sub">${esc([koreanShort(e.date), e.venue].filter(Boolean).join(' · '))}</div></div></div>
+      <div style="height:16px"></div>
+      <div class="figure-row">${fig('구역', e.zones.length)}${fig('대기줄', e.zones.reduce((n, z) => n + z.queues.length, 0))}</div>
+      <div style="height:16px"></div>
+      <button class="filled big compact" data-go="#/e/${e.code}">${ic('door_front', 'outlined')}<span>열기</span></button>
     </div>`).join('');
   const foot = state.refreshError
     ? `공연 정보를 갱신하지 못했습니다 (${esc(state.refreshError)}). 저장된 정보로 동작합니다.`
     : state.lastRefresh ? `마지막 업데이트 ${timeShort(state.lastRefresh)}` : '';
-  return `${appbar('현장 스태프')}
+  return `<header class="appbar large"><h1>현장 스태프</h1><div class="acts"></div></header>
     <div class="body">
       ${db ? '' : `${errorLine('안내 서버가 설정되지 않았습니다.')}<div style="height:12px"></div>`}
-      <form class="code-row" data-form="login">
-        <input id="staff-code" class="input code" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="스태프 코드">
+      <form class="code-bar" data-form="login">
+        ${ic('vpn_key', 'outlined', 22)}
+        <input id="staff-code" class="code" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="스태프 코드">
         <button class="filled" type="submit" ${state.loginBusy ? 'disabled' : ''}>${state.loginBusy ? '확인 중' : '추가'}</button>
       </form>
-      <div id="login-error">${state.loginError ? `<div style="height:8px"></div>${errorLine(state.loginError)}` : ''}</div>
-      <div class="section">내 공연</div>
+      <div id="login-error">${state.loginError ? `<div style="height:10px"></div>${errorLine(state.loginError)}` : ''}</div>
+      <div class="page-section">내 공연${mine.length ? `<span>${mine.length}</span>` : ''}</div>
       ${mine.length ? `<div class="cards">${cards}</div>`
-        : `<div class="empty">${ic('vpn_key', 'outlined')}<p><b style="font-weight:600;font-size:15px">아직 들어간 공연이 없습니다</b><br>주최 측에서 받은 스태프 코드를 입력하면<br>여기에 공연이 추가됩니다.</p></div>`}
+        : `<div class="empty-hero"><div class="circle">${ic('vpn_key', 'outlined', 34)}</div><h2>스태프 코드를 입력하세요</h2>
+            <p>주최 측에서 받은 스태프 코드를 넣으면<br>여기에 공연이 추가됩니다.</p></div>`}
       <div style="height:16px"></div>
-      <div class="hint" style="font-size:12px">${foot}</div>
+      <div class="hint center" style="font-size:12px">${foot}</div>
     </div>`;
 }
 
@@ -396,19 +399,18 @@ function viewConsole(e) {
   return `<div id="console-main">${appbar('현장 안내', { back: '#/', actions: `<button class="icon-btn" data-action="leave" aria-label="나가기" title="나가기">${ic('delete', 'outlined')}</button>` })}
     <nav class="tabbar console-tabs"><div>${tab('entry', 'door_front', '입장 관리')}${tab('notice', 'campaign', '안내 보내기')}</div></nav>
     <div class="body" id="page-entry"${state.tab === 'entry' ? '' : ' hidden'}>
-      <div style="font-size:22px;font-weight:700">${esc(e.title)}</div>
-      <div class="hint" id="show-sub" style="font-size:14px;margin-top:4px">${koreanShort(new Date(showStart(e)))} · ${esc(e.venue)}</div>
-      <div style="height:16px"></div>
+      <div class="console-title">${esc(e.title)}</div>
+      <div class="hint" id="show-sub" style="font-size:14px;margin-top:4px">${esc([koreanShort(new Date(showStart(e))), e.venue].filter(Boolean).join(' · '))}</div>
+      <div style="height:18px"></div>
       <div id="show-card">${showCard(e)}</div>
-      <div style="height:16px"></div>
-      <div class="staff-h" style="margin-bottom:0">입장 관리</div>
-      <div class="hint" style="font-size:12px">입장 시작·마감을 누르면 그 줄(지정석은 구역) 관객 앱에 바로 표시됩니다</div>
-      <div style="height:12px"></div>
-      <div id="entry-cards">${e.zones.map((z) => entryCard(e, z)).join('<div style="height:10px"></div>')}</div>
+      <div class="page-section" style="margin-bottom:4px">입장 관리</div>
+      <div class="hint" style="font-size:13px">입장 시작·마감을 누르면 그 줄(지정석은 구역) 관객 앱에 바로 표시됩니다</div>
+      <div style="height:14px"></div>
+      <div id="entry-cards">${e.zones.map((z) => entryCard(e, z)).join('<div style="height:14px"></div>')}</div>
       <div style="height:14px"></div>
     </div>
     <div class="body" id="page-notice"${state.tab === 'notice' ? '' : ' hidden'}>
-      <div class="staff-h" style="margin-bottom:16px">안내 보내기</div>
+      <div class="page-section" style="margin-top:0;margin-bottom:20px">안내 보내기</div>
       <div id="send-form">${sendForm(e)}</div>
 
       <div style="height:28px"></div>
@@ -425,12 +427,13 @@ function viewConsole(e) {
     </div>`;
 }
 
-/** 공연 시작 카드: "공연 시작 오후 7:00 (처음 6:50)" + [시간 조정] */
+/** 공연 시작 카드: 큰 시각 "오후 7:00" (처음 6:50) + [시간 조정] */
+const timeBtn = (attrs) => `<button class="tonal" ${attrs} ${db ? '' : 'disabled'}>${ic('more_time', '', 18)}<span>시간 조정</span></button>`;
 function showCard(e) {
   const at = showStart(e);
-  return `<div class="card staff-time">${ic('theater_comedy', 'outlined', 18).replace('class="mi', 'class="hint mi')}
-    <span class="t"><span class="hint">공연 시작 </span><b>${timeShort(new Date(at))}</b>${at !== e.date.getTime() ? `<span class="hint small">  (처음 ${timeShort(e.date)})</span>` : ''}</span>
-    <button class="text-btn" data-action="show-time" ${db ? '' : 'disabled'}>${ic('more_time')}<span>시간 조정</span></button></div>`;
+  return `<div class="card staff-time"><span class="t"><small class="hint">공연 시작</small>
+    <b>${timeShort(new Date(at))}${at !== e.date.getTime() ? `<span class="hint small">  (처음 ${timeShort(e.date)})</span>` : ''}</b></span>
+    ${timeBtn('data-action="show-time"')}</div>`;
 }
 
 /** 입장 예정 한 줄: "입장 예정 오후 6:30 (처음 6:20)" + [시간 조정]. q 가 있으면 그 줄만 조정한다. */
@@ -439,7 +442,7 @@ function entryTimeRow(z, q) {
   if (at == null) return '';
   return `<div class="entry-time">${ic('schedule', '', 16).replace('class="mi', 'class="hint mi')}
     <span class="t"><span class="hint">입장 예정 </span><b>${timeShort(new Date(at))}</b>${planned != null && at !== planned ? `<span class="hint small">  (처음 ${timeShort(new Date(planned))})</span>` : ''}</span>
-    <button class="text-btn" data-action="entry-time" data-zone="${esc(z.name)}" data-queue="${esc(q?.name ?? '')}" ${db ? '' : 'disabled'}>${ic('more_time')}<span>시간 조정</span></button></div>`;
+    ${timeBtn(`data-action="entry-time" data-zone="${esc(z.name)}" data-queue="${esc(q?.name ?? '')}"`)}</div>`;
 }
 
 /** 구역 카드: 스탠딩은 대기줄마다, 지정석은 구역 한 줄로 현재 입장 상태 + [입장 시작|입장 완료] [입장 마감] */
@@ -452,7 +455,7 @@ function entryCard(e, z) {
   const all = !z.seated && queues.length > 1 ? `${entryRow(z, null, false)}<div class="divider-full thick"></div>` : '';
   const rows = z.seated ? entryRow(z, null, false) : all + queues.map((q) => entryRow(z, q, differ || z.queues.length > 1)).join('<div class="divider-full"></div>');
   return `<div class="card staff-zone">
-    <div class="zone-head"><b>${esc(z.name)}</b><span class="hint">${z.seated ? '지정석' : '스탠딩'}</span></div>
+    <div class="zone-head"><b>${esc(z.name)}</b><span class="hint">${z.seated ? '지정석' : `스탠딩 · ${z.min}~${z.max}`}</span></div>
     ${head}${rows}</div>`;
 }
 /** 구역 머리말의 입장 예정: 첫 줄 기준 (줄마다 같을 때만 보인다) */
@@ -461,7 +464,7 @@ function entryTimeRowZone(z, q) {
   if (at == null) return '';
   return `<div class="entry-time">${ic('schedule', '', 16).replace('class="mi', 'class="hint mi')}
     <span class="t"><span class="hint">입장 예정 </span><b>${timeShort(new Date(at))}</b>${planned != null && at !== planned ? `<span class="hint small">  (처음 ${timeShort(new Date(planned))})</span>` : ''}</span>
-    <button class="text-btn" data-action="entry-time" data-zone="${esc(z.name)}" data-queue="" ${db ? '' : 'disabled'}>${ic('more_time')}<span>시간 조정</span></button></div>`;
+    ${timeBtn(`data-action="entry-time" data-zone="${esc(z.name)}" data-queue=""`)}</div>`;
 }
 
 /** 입장 단위 한 줄 (스탠딩 대기줄 하나, 또는 지정석 구역 전체) */
@@ -474,7 +477,7 @@ function entryRow(z, q, ownTime) {
     ? `<button class="filled green" data-action="entry-done" ${data} ${db && st === 'entryOpen' ? '' : 'disabled'}>입장 완료</button>`
     : `<button class="filled" data-action="entry-open" ${data} ${db ? '' : 'disabled'}>입장 시작</button>`;
   return `<div class="entry-row">
-    <div class="row">${q ? `<b>${esc(q.name)}</b><span class="hint">${rangeText(q)}</span>` : '<span class="hint" style="font-size:15px">구역 전체</span>'}
+    <div class="row">${q ? `<b>${esc(q.name)}</b><span class="hint">${rangeText(q)}</span>` : '<b>구역 전체</b>'}
       <span class="spacer"></span><span class="state ${cls}">${label}</span></div>
     ${q && ownTime ? entryTimeRow(z, q) : ''}
     <div class="btns">${primary}<button class="filled red" data-action="entry-close" ${data} ${db && st !== 'entryClosed' ? '' : 'disabled'}>입장 마감</button></div>
@@ -525,7 +528,7 @@ function noticeList() {
   return err + state.notices.map((n) => {
     const k = kind(n.kind);
     const color = n.kind === 'moveBack' ? 'var(--orange)' : n.kind === 'entryClosed' ? 'var(--red)' : 'var(--accent)';
-    return `<div class="card staff-notice"><span style="color:${color}">${ic(k.icon)}</span>
+    return `<div class="card staff-notice"><span class="tile-icon" style="color:${color};background:color-mix(in srgb, ${color} 14%, transparent)">${ic(k.icon)}</span>
       <div class="t"><div class="row"><b>${esc(k.title)}</b><span class="spacer"></span><span class="hint" style="font-size:12px">${timeShort(new Date(n.at))}</span></div>
         <div style="margin-top:2px;white-space:pre-line">${esc(n.message)}</div>
         <div class="row" style="margin-top:2px"><span class="hint" style="font-size:12px;flex:1">${esc(targetText(n.zone, n.queue, n.min, n.max))}</span>
