@@ -344,7 +344,10 @@ $sheet.addEventListener('click', (ev) => {
   if (d && dialogDone) { dialogDone(d.dataset.dialog === 'cancel' ? null : d.dataset.dialog); return; }
   if (ev.target === $sheet && dialogDone) dialogDone(null);
 });
-const dialogActs = (items) => `<div class="acts">${items.map(([id, label, style = '']) => `<button class="text-btn" data-dialog="${id}" style="${style}">${esc(label)}</button>`).join('')}</div>`;
+// 앱 확인창 (standing_core AppDialog): 아래 꽉 찬 버튼. color 를 주면 채운 주 버튼 (accent/red/green/close), 없으면 회색 보조
+const dialogActs = (items) => `<div class="acts">${items.map(([id, label, color = '']) => `<button class="dlg-btn${color ? ` primary ${color}` : ''}" data-dialog="${id}">${esc(label)}</button>`).join('')}</div>`;
+/** 확인창 머리: 연한 원 안 아이콘 + 굵은 가운데 제목 */
+const dialogHead = (icon, color, title) => `<div class="dlg-icon" style="--c:${color}">${ic(icon, 'round', 28)}</div><h3>${esc(title)}</h3>`;
 
 // ───────── 화면 (lib/ui/*.dart 를 그대로) ─────────
 
@@ -363,7 +366,7 @@ function viewHome() {
   const fig = (label, n) => `<div class="figure"><small>${label}</small><b style="font-size:32px">${n}<i>개</i></b></div>`;
   const cards = mine.map((e) => `
     <div class="card event-card" data-card="${e.code}" data-go="#/e/${e.code}">
-      <div class="card-head"><div><h3>${esc(e.title)}</h3><div class="sub">${esc([koreanShort(e.date), e.venue].filter(Boolean).join(' · '))}</div></div></div>
+      <div class="card-head"><div><h3>${esc(e.title)}</h3><div class="sub">${esc([koreanShort(e.date), e.venue].filter(Boolean).join(' · '))}</div></div>${ic('chevron_right', 'round')}</div>
       <div style="height:16px"></div>
       <div class="figure-row">${fig('구역', e.zones.length)}${fig('대기줄', e.zones.reduce((n, z) => n + z.queues.length, 0))}</div>
       <div style="height:16px"></div>
@@ -624,10 +627,10 @@ async function doLogin() {
 async function sendEntry(e, z, q, k) {
   const target = [z.name, q?.name ?? (z.seated ? null : '전체')].filter(Boolean).join(' ');
   const open = k === 'entryOpen';
-  const r = await modal(`<h3>${esc(target)} ${kind(k).title}</h3>
+  const r = await modal(`${dialogHead(open ? 'login' : 'block', open ? 'var(--accent)' : '#C9504A', `${target} ${kind(k).title}`)}
     <p class="hint" style="font-size:14px">${open ? '관객 앱에 입장이 시작되었다고 표시되고, 아래 메시지가 함께 나갑니다.' : '관객 앱에 입장이 마감되어 들어올 수 없다고 표시됩니다.'}</p>
     <textarea class="input message" rows="2" placeholder="${esc(kind(k).message)}" ${open ? 'autofocus' : ''}></textarea>
-    ${dialogActs([['cancel', '취소'], ['ok', kind(k).title, `font-weight:700;color:${open ? 'var(--accent)' : 'var(--red)'}`]])}`);
+    ${dialogActs([['cancel', '취소'], ['ok', kind(k).title, open ? 'accent' : 'close']])}`);
   if (!r) return;
   try {
     await send(e, { kind: k, message: r.value || kind(k).message, zone: z.name, queue: q?.name ?? null });
@@ -638,8 +641,8 @@ async function sendEntry(e, z, q, k) {
 /** 입장 완료: 확인만 받고 보낸다. 관객 앱에서는 입장 시작 띠가 내려간다 (알림 없음). */
 async function finishEntry(e, z, q) {
   const target = [z.name, q?.name ?? (z.seated ? null : '전체')].filter(Boolean).join(' ');
-  const r = await modal(`<h3>${esc(target)} 입장 완료</h3><p class="hint" style="font-size:14px">관객 앱에서 "입장이 시작되었습니다" 안내가 내려갑니다. 관객에게 알림은 가지 않습니다.</p>
-    ${dialogActs([['cancel', '취소'], ['ok', '입장 완료', 'font-weight:700']])}`);
+  const r = await modal(`${dialogHead('check_circle_outline', 'var(--green)', `${target} 입장 완료`)}<p class="hint" style="font-size:14px">관객 앱에서 "입장이 시작되었습니다" 안내가 내려갑니다. 관객에게 알림은 가지 않습니다.</p>
+    ${dialogActs([['cancel', '취소'], ['ok', '입장 완료', 'green']])}`);
   if (!r) return;
   try {
     await send(e, { kind: 'entryDone', message: kind('entryDone').message, zone: z.name, queue: q?.name ?? null });
@@ -658,14 +661,14 @@ async function adjustTime(title, current, target, show) {
     d.style.color = delta === 0 ? 'var(--hint)' : delta > 0 ? 'var(--orange)' : 'var(--accent)';
     box.querySelector('[data-dialog="ok"]').disabled = delta === 0;
   };
-  const r = await modal(`<h3>${esc(title)}</h3>
+  const r = await modal(`${dialogHead(show ? 'theater_comedy' : 'more_time', 'var(--orange)', title)}
     <p class="hint" style="font-size:14px;margin-bottom:8px">지금 예정 ${timeShort(new Date(current))}</p>
     <div class="center" style="font-size:30px;font-weight:800" data-next>${timeShort(new Date(current))}</div>
     <div class="center" style="font-size:13px;font-weight:600;color:var(--hint)" data-delta>변경 없음</div>
     <div class="steps">${[-10, -5, 5, 10].map((m) => `<button class="outlined" data-step="${m}">${m > 0 ? '+' + m : m}분</button>`).join('')}</div>
     <textarea class="input message" rows="1" placeholder="덧붙일 말 (선택) 예: 무대 점검으로 늦어집니다"></textarea>
     <p class="hint" style="font-size:12px;margin-top:6px">보내면 이 ${target} 관객에게 알림이 가고, ${show ? '공연까지' : '입장까지'} 남은 시간이 바로 바뀝니다.</p>
-    ${dialogActs([['cancel', '취소'], ['ok', '보내기', 'font-weight:700']])}`, (box, step) => {
+    ${dialogActs([['cancel', '취소'], ['ok', '보내기', 'accent']])}`, (box, step) => {
     if (step) delta += Number(step.dataset.step);
     draw(box);
   });
@@ -690,7 +693,7 @@ $app.addEventListener('click', async (ev) => {
   const z = t.dataset.zone ? zoneOf(e, t.dataset.zone) : null;
   const q = z ? queueOf(z, t.dataset.queue) : null;
   if (a === 'leave') {
-    const r = await modal(`<h3>이 기기에서 스태프 코드를 지웁니다.</h3>${dialogActs([['cancel', '취소'], ['ok', '나가기', 'color:var(--red)']])}`);
+    const r = await modal(`${dialogHead('logout', 'var(--red)', '이 기기에서 스태프 코드를 지웁니다.')}${dialogActs([['cancel', '취소'], ['ok', '나가기', 'red']])}`);
     if (r) { logout(e.code); go('#/'); }
   } else if (a === 'tab') {
     state.tab = t.dataset.tab;
@@ -728,13 +731,13 @@ $app.addEventListener('click', async (ev) => {
     // console.dart _CancelDialog: 정정 안내는 쓰고 싶을 때만 (비우면 취소만)
     const n = state.notices.find((x) => x.id === t.dataset.id);
     if (!n) return;
-    const r = await modal(`<h3>이 안내를 취소할까요?</h3>
-      <p style="margin:0 0 4px;font-weight:600">${esc(kind(n.kind).title)} · ${esc(targetText(n.zone, n.queue, n.min, n.max))}</p>
-      <p style="margin:0 0 12px;white-space:pre-line">${esc(n.message)}</p>
-      <p class="hint" style="font-size:13px">관객 앱·웹 안내 목록에서 사라지고, 입장 시작·마감·시간 변경이면 이전 상태로 돌아갑니다. 이미 뜬 알림은 지울 수 없습니다.</p>
+    const r = await modal(`${dialogHead('undo', '#C9504A', '이 안내를 취소할까요?')}
+      <p style="margin:0 0 4px;font-weight:600;text-align:left">${esc(kind(n.kind).title)} · ${esc(targetText(n.zone, n.queue, n.min, n.max))}</p>
+      <p style="margin:0 0 12px;white-space:pre-line;text-align:left">${esc(n.message)}</p>
+      <p class="hint" style="font-size:13px;text-align:left">관객 앱·웹 안내 목록에서 사라지고, 입장 시작·마감·시간 변경이면 이전 상태로 돌아갑니다. 이미 뜬 알림은 지울 수 없습니다.</p>
       <textarea class="input message" rows="2" placeholder="정정 안내 (선택) — 예: 앞서 보낸 안내는 잘못 보낸 것입니다"></textarea>
       <div class="hint small" data-correction-hint style="margin-top:6px">비워 두면 취소만 합니다.</div>
-      ${dialogActs([['cancel', '닫기'], ['ok', '안내 취소', 'font-weight:700;color:#C9504A']])}`,
+      ${dialogActs([['cancel', '닫기'], ['ok', '안내 취소', 'close']])}`,
       (box) => { box.querySelector('[data-correction-hint]').textContent = box.querySelector('textarea').value.trim() ? '같은 대상에게 이 내용으로 새 안내를 보냅니다.' : '비워 두면 취소만 합니다.'; });
     if (!r) return;
     try {
@@ -786,9 +789,9 @@ $app.addEventListener('pointerdown', (ev) => {
   pressTimer = setTimeout(async () => {
     longPressed = true;
     const e = eventByCode(card.dataset.card);
-    const r = await modal(`<h3>${esc(e?.title ?? '')}을(를) 목록에서 삭제할까요?</h3>
+    const r = await modal(`${dialogHead('delete_outline', 'var(--red)', `${e?.title ?? ''}을(를) 목록에서 삭제할까요?`)}
       <p class="hint" style="font-size:14px">이 기기에서 스태프 코드를 지웁니다. 다시 들어가려면 코드를 입력해야 합니다.</p>
-      ${dialogActs([['cancel', '취소'], ['ok', '삭제', 'color:var(--red)']])}`);
+      ${dialogActs([['cancel', '취소'], ['ok', '삭제', 'red']])}`);
     if (r) { logout(card.dataset.card); render(); }
   }, 550);
 });

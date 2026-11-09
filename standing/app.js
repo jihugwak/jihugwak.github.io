@@ -493,7 +493,7 @@ async function setStanding(on) {
       render();
       const denied = await checkLocation(c.z.location);
       state.checking = false;
-      if (denied) { render(); dialog('공연장에서만 사용할 수 있습니다', denied); return; }
+      if (denied) { render(); dialog('공연장에서만 사용할 수 있습니다', denied, undefined, { icon: 'location_off', color: 'var(--orange)' }); return; }
     }
   }
   state.participant.standing = on;
@@ -542,16 +542,20 @@ function toast(n) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
 }
 
-/** AlertDialog. actions: [{label, id, danger}] — 누른 id 로 resolve */
-function dialog(title, body, actions = [{ label: '확인', id: 'ok' }]) {
+/** 앱 확인창 (standing_core AppDialog). actions: [{label, id, danger}] — 마지막 버튼이 채운 주 버튼(danger 면 빨강). 누른 id 로 resolve */
+function dialog(title, body, actions = [{ label: '확인', id: 'ok' }], { icon = null, color = 'var(--accent)' } = {}) {
   return new Promise((resolve) => {
-    $sheet.innerHTML = `<div class="dialog"><h3>${esc(title)}</h3><p>${esc(body)}</p><div class="acts">${actions
-      .map((a) => `<button class="text-btn" data-dialog="${a.id}"${a.danger ? ' style="color:var(--red)"' : ''}>${esc(a.label)}</button>`).join('')}</div></div>`;
+    $sheet.innerHTML = `<div class="dialog">${dialogHead(icon, color, title)}<p>${esc(body)}</p><div class="acts">${actions
+      .map((a, i) => `<button class="dlg-btn${i === actions.length - 1 ? ' primary' : ''}${a.danger ? ' red' : ''}" data-dialog="${a.id}">${esc(a.label)}</button>`).join('')}</div></div>`;
     $sheet.hidden = false;
     dialogDone = (id) => { $sheet.hidden = true; dialogDone = null; resolve(id); };
   });
 }
 let dialogDone = null;
+/** 확인창 머리: 연한 원 안 아이콘 + 굵은 가운데 제목 */
+function dialogHead(icon, color, title) {
+  return `${icon ? `<div class="dlg-icon" style="--c:${color}">${ic(icon, 'round', 28)}</div>` : ''}<h3>${esc(title)}</h3>`;
+}
 
 /** 줄에 섰어요 토글 (StandingToggle). compact 는 카드 안 48 높이 */
 function standingToggle(c, compact = false) {
@@ -742,10 +746,10 @@ function viewLine() {
   const mineSlot = q.map?.axis ? drawn.find((s) => s.n === p.ticket) : null;
   const key = (s) => (byRows ? s.y : s.x);
   const lineNums = new Set(mineSlot ? drawn.filter((s) => key(s) === key(mineSlot)).map((s) => s.n) : []);
-  const lineNo = mineSlot ? new Set(drawn.filter((s) => key(s) < key(mineSlot)).map(key)).size + 1 : 0;
   const myLine = lineNums.size > 0 && !state.wholeMap; // [내 줄 보기]
-  // 서 있는 사람만: 내 줄 보기면 내 줄에 선 사람만
-  const standingList = [...standing].filter((n) => !myLine || lineNums.has(n)).sort((a, b) => a - b);
+  // 서 있는 사람만: 내 줄 보기면 내 줄에 선 사람만. 내 칸은 안 서 있어도 항상 보여 준다 (인원 수에는 안 넣는다)
+  const standingList = [...new Set([...standing, p.ticket])].filter((n) => n === p.ticket || !myLine || lineNums.has(n)).sort((a, b) => a - b);
+  const standingCount = standingList.filter((n) => standing.has(n)).length;
   // 앱 바의 켜고 끄는 아이콘 (line_map.dart _ToggleIcon): 켜지면 파란 바탕
   const toggle = (action, icon, on, onLabel, offLabel) =>
     `<button class="icon-btn toggle${on ? ' sel' : ''}" data-action="${action}" data-v="${on ? '0' : '1'}" data-on="${onLabel}" data-off="${offLabel}" aria-pressed="${on}" aria-label="${on ? onLabel : offLabel}" title="${on ? onLabel : offLabel}">${ic(icon, on ? '' : 'outlined')}</button>`;
@@ -754,11 +758,6 @@ function viewLine() {
   const myRank = lineSorted.indexOf(p.ticket);
   const frontN = myRank > 0 ? lineSorted[myRank - 1] : null;
   const backN = myRank >= 0 && myRank < lineSorted.length - 1 ? lineSorted[myRank + 1] : null;
-  const lineStanding = lineSorted.filter(isStand).length;
-  const switches = myLine ? `
-      <div class="line-card"><div class="top"><span class="ico">${ic(byRows ? 'table_rows' : 'view_week', 'round')}</span><small>내 줄</small></div>
-        <b>${p.ticket}번 · ${lineName(lineNo - 1, new Set(drawn.map(key)).size, byRows)}</b>
-        <span class="hint">서 있는 사람 ${lineStanding}명</span></div>` : '';
   // 내 줄 확대의 큰 칸 / 옆 줄 반쪽 칸
   const bigSlot = (n, front = frontN, back = backN) => {
     const mine = n === p.ticket, st = isStand(n);
@@ -776,10 +775,16 @@ function viewLine() {
   // 내 줄 확대 + 서 있는 사람만: 같은 큰 칸 모양으로, 내 줄에 선 사람만 (세로줄은 위→아래, 가로줄은 옆으로)
   const si = standingList.indexOf(p.ticket);
   const bigStand = (n) => bigSlot(n, si > 0 ? standingList[si - 1] : null, si >= 0 ? standingList[si + 1] : null);
-  if (myLine && drawn.length && state.onlyStanding && standingList.length) {
+  if (myLine && drawn.length && state.onlyStanding) {
+    // 옆 줄도 선 사람만 같은 순서로 당겨서 가장자리에 살짝 보여 준다
+    const sideLine = (offset) => drawn.filter((s) => key(s) === key(mineSlot) + offset && standing.has(s.n)).map((s) => s.n).sort((a, b) => a - b);
+    const before = sideLine(-1), after = sideLine(1);
+    const peekN = (n, side) => (n == null ? '<div class="peek"></div>' : `<div class="peek ${side}">${slot(n).replace(' id="my-slot"', '')}</div>`);
+    const count = standingList.length;
+    const grid = (items, cls) => `<div class="frow ${cls}" style="grid-template-columns:repeat(${count},minmax(84px,1fr))">${items.join('')}</div>`;
     body = byRows
-      ? `<div class="frow-wrap"><div class="frow bigs" style="grid-template-columns:repeat(${standingList.length},minmax(84px,1fr))">${standingList.map(bigStand).join('')}</div></div>`
-      : standingList.map((n) => `<div class="fcol-row dial-row"><div class="peek"></div>${bigStand(n)}<div class="peek"></div></div>`).join('');
+      ? `<div class="frow-wrap">${grid(standingList.map((_, i) => peekN(before[i], 't')), 'peeks')}${grid(standingList.map(bigStand), 'bigs')}${grid(standingList.map((_, i) => peekN(after[i], 'b')), 'peeks')}</div>`
+      : standingList.map((n, i) => `<div class="fcol-row dial-row">${peekN(before[i], 'l')}${bigStand(n)}${peekN(after[i], 'r')}</div>`).join('');
   } else if (myLine && drawn.length && !state.onlyStanding && !byRows) {
     // 세로줄 확대: 내 세로줄이 화면 폭을 채우고, 양옆 세로줄은 가장자리에 반쯤만 흐리게
     const ys = drawn.filter((s) => lineNums.has(s.n)).map((s) => s.y);
@@ -801,8 +806,31 @@ function viewLine() {
     }
     const grid = (items, cls) => `<div class="frow ${cls}" style="grid-template-columns:repeat(${maxX - minX + 1},minmax(84px,1fr))">${items.join('')}</div>`;
     body = `<div class="frow-wrap">${grid(top, 'peeks')}${grid(cells, 'bigs')}${grid(bottom, 'peeks')}</div>`;
+  } else if (state.onlyStanding && drawn.length) {
+    // 전체 줄 보기 + 서 있는 사람만: 줄 구분은 그대로 두고 선 사람만 (세로줄은 각 줄 앞으로 당기고, 가로줄은 빈 줄을 뺀다)
+    const shown = new Set(standingList);
+    const picked = drawn.filter((s) => shown.has(s.n));
+    const byLine = new Map();
+    for (const s of picked) {
+      const k = byRows ? s.y : s.x;
+      if (!byLine.has(k)) byLine.set(k, []);
+      byLine.get(k).push(s);
+    }
+    let rows;
+    if (byRows) {
+      rows = [...byLine.keys].sort((a, b) => a - b).map((y) => new Map(byLine.get(y).map((s) => [s.x, s.n])));
+    } else {
+      for (const line of byLine.values) line.sort((a, b) => a.y - b.y);
+      const depth = Math.max(0, ...[...byLine.values].map((l) => l.length));
+      rows = Array.from({ length: depth }, (_, i) => new Map([...byLine].filter(([, l]) => i < l.length).map(([x, l]) => [x, l[i].n])));
+    }
+    body = rows.map((byX) => {
+      const cells = [];
+      for (let x = 0; x < q.map.cols; x++) cells.push(`<div>${byX.has(x) ? slot(byX.get(x)) : ''}</div>`);
+      return `<div class="map-row big dial-row" style="grid-template-columns:repeat(${q.map.cols},1fr)">${cells.join('')}</div>`;
+    }).join('');
   } else if (state.onlyStanding) {
-    body = standingList.length ? bigList(standingList) : `<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>`;
+    body = bigList(standingList);
   } else if (drawn.length) {
     // 주최 측이 그린 배치도 그대로 (빈 자리는 빈칸)
     const ys = drawn.map((s) => s.y), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -818,6 +846,7 @@ function viewLine() {
   } else {
     body = bigList(Array.from({ length: total }, (_, i) => q.min + i));
   }
+  if (state.onlyStanding && !standingCount) body += '<div class="hint center" style="padding:30px 20px">아직 이 줄에 선 사람이 없습니다.</div>';
   // 세로로 넘기는 목록은 다이얼 (가로줄 확대만 옆으로 넘긴다). 마지막 칸도 기준 위치까지 오게 아래 여백.
   if (body.includes('dial-row')) body += '<div class="dial-spacer"></div>';
 
@@ -825,11 +854,10 @@ function viewLine() {
   return `<header class="appbar wide"><button class="icon-btn lead" data-go="#/q" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button><h1>내 자리 찾기</h1><div class="acts">${actions}</div></header>
     <div class="line-head">
       <h2>${esc(z.name)} · ${esc(q.name)}</h2>
-      <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standingList.length}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
+      <div class="hint">${state.onlyStanding ? `${rangeText(q)} · 서 있는 사람 ${standingCount}명만 보는 중` : `${rangeText(q)} · ${standing.size}/${total}명 서 있음`}</div>
       ${state.spotsError ? `<div class="error">${ic('warning', 'round')}<span>줄 현황을 받지 못했습니다. ${esc(state.spotsError)}</span></div>` : ''}
-      ${switches}
       <div class="legend"><span><i style="background:var(--accent)"></i>줄에 서 있음</span><span><i style="background:var(--orange)"></i>내 번호</span><span><i style="border:1px solid color-mix(in srgb, var(--hint) 67%, transparent)"></i>빈칸</span></div>
-      <div class="dir">${ic('keyboard_double_arrow_up')}<span>${drawn.length && !state.onlyStanding ? '입장 방향 (줄 앞) · 주최 측이 그린 줄 배치' : '입장 방향 (줄 앞)'}</span></div>
+      <div class="dir">${ic('keyboard_double_arrow_up')}<span>${state.onlyStanding ? '입장 방향 (줄 앞) · 현재 대기 인원' : '입장 방향 (줄 앞) · 전체 칸'}</span></div>
       <div style="height:6px"></div>
     </div>
     ${body}
@@ -837,17 +865,6 @@ function viewLine() {
     <div class="bottom-actions" style="padding-bottom:10px">${standingToggle(c)}
       <div class="hint center" style="font-size:12px;margin-top:4px">${p.standing ? '내 칸이 줄에 표시되고 있습니다.' : '자리를 찾아 선 뒤 [줄에 섰어요]를 누르면 내 칸이 채워집니다.'}</div>
     </div>`;
-}
-
-// line_map.dart lineName: 줄이 2개면 "왼쪽 줄/오른쪽 줄"(가로줄은 "앞 줄/뒤 줄"), 3개면 가운데, 더 많으면 가까운 끝에서 센다
-function lineName(index, count, byRows) {
-  const [first, last] = byRows ? ['앞', '뒤'] : ['왼쪽', '오른쪽'];
-  if (count <= 1) return '한 줄';
-  if (index === 0) return `${first} 줄`;
-  if (index === count - 1) return `${last} 줄`;
-  if (count === 3) return '가운데 줄';
-  const fromLast = count - 1 - index;
-  return index <= fromLast ? `${first}에서 ${index + 1}번째 줄` : `${last}에서 ${fromLast + 1}번째 줄`;
 }
 
 // account.dart
@@ -1067,7 +1084,7 @@ $app.addEventListener('pointerdown', (ev) => {
     longPressed = true;
     const e = eventByCode(card.dataset.card);
     const id = await dialog(`${e?.title ?? ''} 삭제`, '내 공연 목록에서 지웁니다. QR이나 코드로 다시 추가할 수 있습니다.',
-      [{ label: '취소', id: 'cancel' }, { label: '삭제', id: 'delete', danger: true }]);
+      [{ label: '취소', id: 'cancel' }, { label: '삭제', id: 'delete', danger: true }], { icon: 'delete_outline', color: 'var(--red)' });
     if (id === 'delete') { forgetEvent(card.dataset.card); render(); }
   }, 550);
 });
@@ -1097,7 +1114,7 @@ $app.addEventListener('click', async (ev) => {
   } else if (a === 'stand-off') {
     // 실수로 눌러 나가지 않도록 한 번 묻는다 (앱 StandingToggle 과 같은 창, 웹은 블루투스가 없어 설명만 다름)
     const id = await dialog('줄에서 나왔나요?', '나가면 줄 현황에서 "줄에 서 있음"이 꺼져요.',
-      [{ label: '취소', id: 'cancel' }, { label: '나왔어요', id: 'leave', danger: true }]);
+      [{ label: '취소', id: 'cancel' }, { label: '나왔어요', id: 'leave', danger: true }], { icon: 'logout', color: 'var(--red)' });
     if (id === 'leave') setStanding(false);
   } else if (a === 'notices') {
     $sheet.innerHTML = viewNotices();
@@ -1119,7 +1136,7 @@ $app.addEventListener('click', async (ev) => {
   } else if (a === 'leave') {
     leaveEvent();
   } else if (a === 'provider') {
-    dialog('예매처 계정 연결', '예매처 계정 연결은 STANBY 앱에서 할 수 있습니다.');
+    dialog('예매처 계정 연결', '예매처 계정 연결은 STANBY 앱에서 할 수 있습니다.', undefined, { icon: 'person_add_alt_1' });
   }
 });
 
@@ -1281,7 +1298,7 @@ document.addEventListener('visibilitychange', () => {
     history.replaceState(null, '', location.pathname.replace(/join(\.html)?\/?$/, '') + keep);
     const e = eventByCode(code);
     if (e) openEvent(e.code);
-    else { render(); dialog('참가할 수 없습니다', 'QR 링크의 공연을 찾을 수 없습니다.'); }
+    else { render(); dialog('참가할 수 없습니다', 'QR 링크의 공연을 찾을 수 없습니다.', undefined, { icon: 'error_outline', color: 'var(--orange)' }); }
   }
   syncSpot();
   syncNotices();

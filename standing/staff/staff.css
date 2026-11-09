@@ -58,13 +58,14 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .staff-notice .row b { font-size: 15px; font-weight: 700; }
 
 /* 확인 창 */
-.staff-dialog h3 { margin: 0 0 12px; font-size: 22px; font-weight: 500; }
-.staff-dialog p { margin: 0 0 12px; white-space: normal; }
+.staff-dialog > p { margin: 10px 0 0; white-space: normal; }
+.staff-dialog > h3 + p, .staff-dialog > h3 + .acts { margin-top: 10px; }
+.staff-dialog > p + textarea, .staff-dialog > p + p, .staff-dialog .steps + textarea { margin-top: 14px; }
+.staff-dialog textarea { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .staff-dialog .input.message { min-height: 64px; font-size: 16px; }
 .staff-dialog .steps { display: flex; gap: 6px; margin: 12px 0; }
 .staff-dialog .steps > * { flex: 1; }
-.staff-dialog .acts { display: flex; justify-content: flex-end; gap: 4px; margin-top: 16px; }
-.staff-dialog .text-btn:disabled { color: var(--disabled-fg); }
+.staff-dialog .acts { margin-top: 24px; }
 
 /* 앱 바: 오른쪽 [나가기] 가 한 줄로 들어가게 */
 .appbar { grid-template-columns: 88px 1fr 88px; }
