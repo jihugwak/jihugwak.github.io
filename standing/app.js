@@ -108,13 +108,16 @@ function parseCatalog(text) {
       const entryAt = z.entry == null ? eventEntry : z.entry === 'none' ? null : parseDate(z.entry);
       // 입장 시작 예정 (선택) — 스태프가 현장에서 늦추거나 당긴다
       const admission = z.admission ? parseDate(z.admission) : null;
+      // 입장 종료 예정 (선택) — 지나면 저절로 입장 마감, 스태프가 현장에서 조정한다
+      const admissionEnd = z.admissionEnd ? parseDate(z.admissionEnd) : null;
       // 지정석: 번호·대기줄 없이 구역만
-      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location: null, admission };
+      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], location: null, admission, admissionEnd };
       const zoneMap = parseMap(z.map);
       const specs = Array.isArray(z.queues)
         ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i, map: parseMap(q.map),
             // 이 줄만 따로 정한 입장 시작 예정 (없으면 구역 admission)
-            admission: q.admission ? parseDate(q.admission) : null }))
+            admission: q.admission ? parseDate(q.admission) : null,
+            admissionEnd: q.admissionEnd ? parseDate(q.admissionEnd) : null }))
         : autoSplit(z.min, z.max, z.queueCount || 1);
       // 예전 형식: 구역 전체 배치도에서 대기줄 번호만 떼어 온다
       for (const s of specs) {
@@ -126,7 +129,7 @@ function parseCatalog(text) {
           }
         }
       }
-      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location, entryAt, admission };
+      return { name: z.name || '', min: z.min, max: z.max, queues: specs, location, entryAt, admission, admissionEnd };
     });
     events.push({
       code, title: e.title || '', date: parseDate(e.date), entryAt: eventEntry,
@@ -276,6 +279,7 @@ const KINDS = {
   entryOpen: { title: '입장 시작', message: '입장이 시작되었습니다. 티켓을 준비하고 안내에 따라 입장해 주세요.', icon: 'login', color: 'var(--accent)' },
   entryTime: { title: '입장 시간 변경', message: '', icon: 'more_time', color: 'var(--accent)' },
   showTime: { title: '공연 시간 변경', message: '', icon: 'theater_comedy', color: 'var(--accent)' },
+  entryEndTime: { title: '입장 종료 시간 변경', message: '', icon: 'timer_off', color: 'var(--accent)' },
   entryClosed: { title: '입장 마감', message: '입장이 마감되어 더 이상 입장할 수 없습니다.', icon: 'block', color: 'var(--red)' },
   // 입장 완료: 입장 시작 띠를 내린다. 알림·안내 목록에는 안 보인다
   entryDone: { title: '입장 완료', message: '입장이 완료되었습니다.', icon: 'check_circle', color: 'var(--accent)', silent: true },
@@ -321,7 +325,24 @@ const myAllNotices = () => {
 // 안내 목록·안 읽음에 보이는 것
 const myNotices = () => myAllNotices().filter((n) => !kind(n.kind).silent);
 // 내 대기줄의 현재 입장 상태 = 입장 시작/마감/완료 중 가장 최근 것 (없으면 입장 전)
-const myEntryState = () => myAllNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed' || n.kind === 'entryDone') || null;
+// 입장 종료 시각이 지났으면, 그 뒤로 스태프가 다시 열지 않은 한 입장 마감 (notice.dart entryStateFor)
+function myEntryState() {
+  const latest = myAllNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed' || n.kind === 'entryDone') || null;
+  const end = myEntryEnd();
+  if (end && Date.now() >= end && (!latest || (latest.at < end && latest.kind !== 'entryDone'))) {
+    return { kind: 'entryClosed', message: '입장 종료 시간이 지나 더 이상 입장할 수 없습니다.', at: end, auto: true };
+  }
+  return latest;
+}
+
+// 내 대기줄 입장 종료 시각(ms): 스태프가 조정한 것(가장 최근 입장 종료 시간 변경) > 관리자가 정한 줄 시각 > 구역 시각
+function myEntryEnd() {
+  const c = current();
+  if (!c) return null;
+  const t = myNotices().find((n) => n.kind === 'entryEndTime' && n.entryAt);
+  const planned = c.q?.admissionEnd || c.z.admissionEnd;
+  return t ? t.entryAt : planned ? planned.getTime() : null;
+}
 
 // 공연 시작 (Date): 스태프가 늦추거나 당긴 것(가장 최근 공연 시간 변경) > 관리자가 정한 시각 (notice.dart showStartFor)
 function showStart(e) {
@@ -411,9 +432,12 @@ function entryBanner(big = false) {
   if (n.kind === 'entryDone') return showCountdown(big);
   const open = n.kind === 'entryOpen';
   const body = open ? n.message : (n.message === KINDS.entryClosed.message ? '더 이상 입장할 수 없습니다.' : n.message);
+  // 입장 중이면 "오후 7:30 입장 종료"
+  const end = open ? myEntryEnd() : null;
+  const endLine = end && end > Date.now() ? `<div class="end">${ic('timer_off', 'outlined')}${timeShort(new Date(end))} 입장 종료</div>` : '';
   return `<div class="entry-banner ${open ? 'open' : 'closed'}">${ic(kind(n.kind).icon)}
     <div class="t"><div class="h"><b>${open ? '입장이 시작되었습니다' : '입장이 마감되었습니다'}</b><span class="hint">${timeShort(new Date(n.at))}</span></div>
-    ${body ? `<div class="m">${esc(body)}</div>` : ''}</div></div>${showCountdown(big)}`;
+    ${body ? `<div class="m">${esc(body)}</div>` : ''}${endLine}</div></div>${showCountdown(big)}`;
 }
 
 // 같은 번호 중복 (home.dart DuplicateWarning): 어느 쪽이 잘못 넣었는지 알 수 없어 모두에게 확인만 부탁한다
@@ -641,21 +665,55 @@ function viewHome() {
 
 // ticket_entry.dart
 let entryZone = null;
+/** 지정석·스탠딩이 섞인 공연에서 고른 종류: 'seated' | 'standing' | null(종류 고르기 화면부터) */
+let entryKind = null;
+const mixedZones = (e) => e.zones.some((z) => z.seated) && e.zones.some((z) => !z.seated);
+
+// 종류 고르기 (ticket_entry.dart _kindPicker)
+function viewKindPicker(e) {
+  const names = (seated) => esc(e.zones.filter((z) => !!z.seated === seated).map((z) => z.name).join(' · '));
+  const card = (kind, icon, title, desc, zones) => `
+    <button type="button" class="card kind-card" data-action="kind" data-kind="${kind}">
+      <span class="kind-ic">${ic(icon, 'round', 28)}</span>
+      <span class="kind-txt"><b>${title}</b><span>${desc}</span>${zones ? `<small>${zones}</small>` : ''}</span>
+      ${ic('chevron_right', 'round')}
+    </button>`;
+  return `${appbar('좌석 종류', { back: '#/' })}
+    <div class="body">
+      <h2 class="title-22">${esc(e.title)}</h2>
+      <div class="sub-14">${koreanShort(e.date)} · ${esc(e.venue)}</div>
+      <div style="height:28px"></div>
+      <div class="section-title" style="margin-bottom:12px">내 티켓은 어떤 좌석인가요?</div>
+      ${card('standing', 'groups', '스탠딩', '입장번호 순서대로 줄을 섭니다', names(false))}
+      <div style="height:12px"></div>
+      ${card('seated', 'event_seat', '지정석', '구역만 고르면 입장 시작을 알려 드립니다', names(true))}
+    </div>`;
+}
+
 function viewEntry(r) {
   const e = eventByCode(r.code);
   if (!e) return `${appbar('번호 입력', { back: '#/' })}<div class="center" style="padding-top:40vh">공연을 찾을 수 없습니다</div>`;
   const p = state.participant?.code === e.code ? state.participant : null;
   const locked = !!p && !r.edit;
-  if (entryZone == null) entryZone = p?.zone ?? (e.zones.length === 1 ? e.zones[0].name : null);
-  const chips = e.zones.map((z) => `<button class="chip ${z.name === entryZone ? 'on' : ''}" data-action="zone" data-zone="${esc(z.name)}" ${locked ? 'disabled' : ''}><b>${esc(z.name)}</b><small>${z.seated ? '지정석' : `${z.min}~${z.max}`}</small></button>`).join('');
-  const seated = !!zoneOf(e, entryZone)?.seated;
-  return `${appbar(seated ? '구역 선택' : '번호 입력', { back: '#/' })}
+  const mixed = mixedZones(e);
+  if (entryKind == null && p) entryKind = p.seated ? 'seated' : 'standing';
+  if (mixed && entryKind == null) return viewKindPicker(e);
+  // 섞인 공연은 고른 종류의 구역만
+  const zones = mixed ? e.zones.filter((z) => !!z.seated === (entryKind === 'seated')) : e.zones;
+  if (entryZone == null) entryZone = p?.zone ?? (zones.length === 1 ? zones[0].name : null);
+  if (mixed && entryZone != null && !zones.some((z) => z.name === entryZone)) entryZone = zones.length === 1 ? zones[0].name : null;
+  const chips = zones.map((z) => `<button class="chip ${z.name === entryZone ? 'on' : ''}" data-action="zone" data-zone="${esc(z.name)}" ${locked ? 'disabled' : ''}><b>${esc(z.name)}</b><small>${z.seated ? '지정석' : `${z.min}~${z.max}`}</small></button>`).join('');
+  const seated = mixed ? entryKind === 'seated' : !!zoneOf(e, entryZone)?.seated;
+  // 고치는 중 뒤로 가기 = 종류 고르기로
+  const kindBack = mixed && !locked;
+  const backBtn = `<button class="icon-btn lead" data-action="kind-back" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button>`;
+  return `${appbar(seated ? '구역 선택' : '번호 입력', kindBack ? { lead: backBtn } : { back: '#/' })}
     <form class="body" data-form="ticket">
       <h2 class="title-22">${esc(e.title)}</h2>
       <div class="sub-14">${koreanShort(e.date)} · ${esc(e.venue)}</div>
       <div style="height:28px"></div>
-      <div class="section-title">구역</div>
-      ${e.zones.length ? `<div class="chips">${chips}</div>` : '<div class="hint">아직 구역이 설정되지 않은 공연입니다.</div>'}
+      <div class="section-row"><div class="section-title">${mixed ? (entryKind === 'seated' ? '지정석 구역' : '스탠딩 구역') : '구역'}</div>${kindBack ? '<button type="button" class="text-btn" data-action="kind-back">좌석 종류 변경</button>' : ''}</div>
+      ${zones.length ? `<div class="chips">${chips}</div>` : '<div class="hint">아직 구역이 설정되지 않은 공연입니다.</div>'}
       <div id="seated-note" class="hint" style="font-size:13px;margin-top:16px" ${seated ? '' : 'hidden'}>지정석 구역은 입장번호 없이 구역만 고르면 됩니다. 입장이 시작되면 알려 드립니다.</div>
       <div id="ticket-block" ${seated ? 'hidden' : ''}>
         <div style="height:24px"></div>
@@ -1097,7 +1155,15 @@ $app.addEventListener('click', async (ev) => {
   if (longPressed) { longPressed = false; ev.preventDefault(); return; }
   if (t.dataset.go) { ev.preventDefault(); ev.stopPropagation(); go(t.dataset.go); return; }
   const a = t.dataset.action;
-  if (a === 'zone') {
+  if (a === 'kind') {
+    entryKind = t.dataset.kind;
+    render();
+    if (entryKind === 'standing' && entryZone) document.getElementById('ticket')?.focus();
+  } else if (a === 'kind-back') {
+    entryKind = null;
+    render();
+    window.scrollTo(0, 0);
+  } else if (a === 'zone') {
     entryZone = t.dataset.zone;
     document.querySelectorAll('.chip').forEach((b) => b.classList.toggle('on', b.dataset.zone === entryZone));
     const btn = document.getElementById('confirm');
@@ -1233,6 +1299,7 @@ $app.addEventListener('submit', async (ev) => {
 function openEvent(code) {
   rememberEvent(code);
   entryZone = null;
+  entryKind = null;
   go(state.participant?.code === code && current() ? '#/q' : '#/e/' + code);
 }
 
@@ -1250,7 +1317,7 @@ window.addEventListener('hashchange', () => {
     state.wholeMap = false;
   }
   lastRoute = r.name;
-  if (r.name !== 'entry') entryZone = null;
+  if (r.name !== 'entry') { entryZone = null; entryKind = null; }
   if (r.name !== 'scan') stopScanner();
   clearInterval(spotPoll);
   spotPoll = null;
@@ -1265,6 +1332,12 @@ window.addEventListener('hashchange', () => {
 setInterval(() => {
   document.querySelectorAll('[data-countdown]').forEach((el) => { el.innerHTML = compactClock(Number(el.dataset.countdown), el.dataset.mode); });
   document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock), el.dataset.mode); });
+}, 1000);
+
+// 입장 종료 시각이 되면 다시 그린다 (저절로 입장 마감)
+setInterval(() => {
+  const end = myEntryEnd();
+  if (end && end <= Date.now() && end > Date.now() - 1500 && ['home', 'queue'].includes(route().name)) render();
 }, 1000);
 
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)

@@ -64,6 +64,7 @@ const KINDS = {
   entryDone: { title: '입장 완료', message: '입장이 완료되었습니다.', icon: 'check_circle', color: 'var(--accent)', state: true, silent: true },
   entryTime: { title: '입장 시간 변경', message: '', icon: 'more_time', color: 'var(--accent)' },
   showTime: { title: '공연 시간 변경', message: '', icon: 'theater_comedy', color: 'var(--accent)' },
+  entryEndTime: { title: '입장 종료 시간 변경', message: '', icon: 'timer_off', color: 'var(--accent)' },
   info: { title: '안내', message: '', icon: 'campaign', color: 'var(--accent)' },
 };
 const kind = (k) => KINDS[k] || KINDS.info;
@@ -99,11 +100,14 @@ function parseCatalog(text) {
     if (!/^[A-Z0-9]{6}$/.test(code) || events.some((x) => x.code === code)) continue;
     const zones = (e.zones || []).map((z) => {
       const admission = z.admission ? parseDate(z.admission) : null;
-      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], admission };
+      // 입장 종료 예정 (지나면 저절로 입장 마감)
+      const admissionEnd = z.admissionEnd ? parseDate(z.admissionEnd) : null;
+      if (z.type === 'seated') return { name: z.name || '', seated: true, min: 0, max: 0, queues: [], admission, admissionEnd };
       const queues = Array.isArray(z.queues)
-        ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i, admission: q.admission ? parseDate(q.admission) : null }))
+        ? z.queues.map((q, i) => ({ name: q.name || `${i + 1}번 줄`, min: q.min, max: q.max, order: i,
+            admission: q.admission ? parseDate(q.admission) : null, admissionEnd: q.admissionEnd ? parseDate(q.admissionEnd) : null }))
         : autoSplit(z.min, z.max, z.queueCount || 1);
-      return { name: z.name || '', seated: false, min: z.min, max: z.max, queues, admission };
+      return { name: z.name || '', seated: false, min: z.min, max: z.max, queues, admission, admissionEnd };
     });
     events.push({ code, title: e.title || '', date: parseDate(e.date), venue: e.venue || '', zones });
   }
@@ -265,6 +269,34 @@ const entryStart = (z, q) => latest(state.notices.filter((n) => n.kind === 'entr
 
 /** 대기줄마다 입장 예정 시각이 다른지 (다르면 시간 조정을 줄마다 한다) */
 const entryStartsDiffer = (z) => !z.seated && new Set(z.queues.map((q) => entryStart(z, q))).size > 1;
+
+/** 관리자가 정한 입장 종료 시각: 줄만 따로 > 구역 */
+const plannedEnd = (z, q) => (q?.admissionEnd || z.admissionEnd)?.getTime() ?? null;
+
+/** 입장 종료 시각(ms): 스태프가 조정한 것(가장 최근 입장 종료 시간 변경) > 관리자가 정한 줄 시각 > 구역 시각 */
+const entryEnd = (z, q) => latest(state.notices.filter((n) => n.kind === 'entryEndTime' && n.entryAt && (!n.zone || n.zone === z.name) && (!n.queue || n.queue === q?.name)))?.entryAt ?? plannedEnd(z, q);
+
+/** 대기줄마다 입장 종료 시각이 다른지 */
+const entryEndsDiffer = (z) => !z.seated && new Set(z.queues.map((q) => entryEnd(z, q))).size > 1;
+
+/** 화면에 보일 입장 상태 (store.dart entryStatus): 종료 시각이 지났으면, 그 뒤로 다시 열지 않은 한 입장 마감 (auto) */
+function entryStatus(z, q) {
+  const last = latest(state.notices.filter((n) => kind(n.kind).state && (!n.zone || n.zone === z.name) && (!n.queue || n.queue === q?.name)));
+  // 구역 전체 줄: 줄마다 종료 시각이 다르면 저절로 마감하지 않는다
+  const multi = !q && !z.seated && z.queues.length;
+  const end = multi ? (entryEndsDiffer(z) ? null : entryEnd(z, z.queues[0])) : entryEnd(z, q);
+  if (end && Date.now() >= end && (!last || (last.at < end && last.kind !== 'entryDone'))) return { kind: 'entryClosed', auto: true };
+  return { kind: last?.kind ?? null, auto: false };
+}
+
+/** "입장 종료가 10분 늦춰졌습니다. 새 입장 종료: 오후 7:40" (notice.dart entryEndTimeChangeText). from 이 없으면 새로 정한 것 */
+function endChangeText(from, to) {
+  if (from == null) return `입장 종료 시간이 정해졌습니다. 입장 종료: ${timeShort(new Date(to))}`;
+  const mins = Math.round((to - from) / 60e3);
+  const amount = remainingText(Math.abs(mins) * 60e3);
+  const head = mins > 0 ? `입장 종료가 ${amount} 늦춰졌습니다.` : mins < 0 ? `입장 종료가 ${amount} 당겨졌습니다.` : '입장 종료 시간이 확정되었습니다.';
+  return `${head} 새 입장 종료: ${timeShort(new Date(to))}`;
+}
 
 /** 공연 시작(ms): 스태프가 조정한 것(가장 최근 공연 시간 변경) > 관리자가 정한 시각 */
 const showStart = (e) => latest(state.notices.filter((n) => n.kind === 'showTime' && n.entryAt && n.code === e.code && !n.zone))?.entryAt ?? e.date.getTime();
@@ -431,7 +463,19 @@ function viewConsole(e) {
 }
 
 /** 공연 시작 카드: 큰 시각 "오후 7:00" (처음 6:50) + [시간 조정] */
-const timeBtn = (attrs) => `<button class="tonal" ${attrs} ${db ? '' : 'disabled'}>${ic('more_time', '', 18)}<span>시간 조정</span></button>`;
+const timeBtn = (attrs, label = '시간 조정') => `<button class="tonal" ${attrs} ${db ? '' : 'disabled'}>${ic('more_time', '', 18)}<span>${label}</span></button>`;
+
+/** 입장 종료 한 줄: "입장 종료 오후 7:30 (처음 7:20)" + [시간 조정], 없으면 "입장 종료 시간 없음" + [시간 정하기]. q 가 null 이면 구역 전체 (기준은 qRef) */
+function entryEndRow(z, q, qRef = q) {
+  const at = entryEnd(z, qRef), planned = plannedEnd(z, qRef);
+  const passed = at != null && at <= Date.now();
+  const text = at == null
+    ? '<span class="hint">입장 종료 시간 없음</span>'
+    : `<span class="hint">입장 종료 </span><b${passed ? ' style="color:#C9504A"' : ''}>${timeShort(new Date(at))}</b>${passed ? '<b class="small" style="color:#C9504A">  지남</b>' : planned != null && at !== planned ? `<span class="hint small">  (처음 ${timeShort(new Date(planned))})</span>` : ''}`;
+  return `<div class="entry-time"><span class="${passed ? '' : 'hint '}mi material-icons-outlined" style="font-size:16px${passed ? ';color:#C9504A' : ''}">timer_off</span>
+    <span class="t">${text}</span>
+    ${timeBtn(`data-action="entry-end-time" data-zone="${esc(z.name)}" data-queue="${esc(q?.name ?? '')}"`, at == null ? '시간 정하기' : '시간 조정')}</div>`;
+}
 function showCard(e) {
   const at = showStart(e);
   return `<div class="card staff-time"><span class="t"><small class="hint">공연 시작</small>
@@ -453,10 +497,12 @@ function entryCard(e, z) {
   const queues = [...z.queues].sort((a, b) => a.order - b.order);
   const differ = entryStartsDiffer(z);
   // 줄마다 다르지 않으면 구역 전체 조정 (줄이 여럿이면 줄마다도 따로 조정할 수 있다)
-  const head = differ ? '' : entryTimeRowZone(z, queues[0] ?? null);
+  const endsDiffer = entryEndsDiffer(z);
+  // 입장 종료: 줄마다 다르지 않으면 구역 전체 한 줄 (없으면 [시간 정하기])
+  const head = (differ ? '' : entryTimeRowZone(z, queues[0] ?? null)) + (endsDiffer ? '' : entryEndRow(z, null, queues[0] ?? null));
   // 줄이 여럿이면 구역 전체를 한 번에 입장 시작·마감 (모든 줄에 적용, 그 뒤 줄마다 따로 바꿀 수 있다)
   const all = !z.seated && queues.length > 1 ? `${entryRow(z, null, false)}<div class="divider-full thick"></div>` : '';
-  const rows = z.seated ? entryRow(z, null, false) : all + queues.map((q) => entryRow(z, q, differ || z.queues.length > 1)).join('<div class="divider-full"></div>');
+  const rows = z.seated ? entryRow(z, null, false) : all + queues.map((q) => entryRow(z, q, differ || z.queues.length > 1, endsDiffer)).join('<div class="divider-full"></div>');
   return `<div class="card staff-zone">
     <div class="zone-head"><b>${esc(z.name)}</b><span class="hint">${z.seated ? '지정석' : `스탠딩 · ${z.min}~${z.max}`}</span></div>
     ${head}${rows}</div>`;
@@ -471,9 +517,10 @@ function entryTimeRowZone(z, q) {
 }
 
 /** 입장 단위 한 줄 (스탠딩 대기줄 하나, 또는 지정석 구역 전체) */
-function entryRow(z, q, ownTime) {
-  const st = entryState(z, q);
-  const [label, cls] = st === 'entryOpen' ? ['입장 중', 'open'] : st === 'entryClosed' ? ['입장 마감', 'closed'] : st === 'entryDone' ? ['입장 완료', 'done'] : ['입장 전', ''];
+function entryRow(z, q, ownTime, ownEnd = false) {
+  const status = entryStatus(z, q);
+  const st = status.kind;
+  const [label, cls] = st === 'entryOpen' ? ['입장 중', 'open'] : st === 'entryClosed' ? [status.auto ? '종료 시간 지나 마감' : '입장 마감', 'closed'] : st === 'entryDone' ? ['입장 완료', 'done'] : ['입장 전', ''];
   const data = `data-zone="${esc(z.name)}" data-queue="${esc(q?.name ?? '')}"`;
   // 입장 중이면 [입장 완료] (관객 앱의 입장 시작 띠를 내린다). 완료하면 회색으로 꺼진 채 남는다. 아니면 [입장 시작]
   const primary = st === 'entryOpen' || st === 'entryDone'
@@ -483,6 +530,7 @@ function entryRow(z, q, ownTime) {
     <div class="row">${q ? `<b>${esc(q.name)}</b><span class="hint">${rangeText(q)}</span>` : '<b>구역 전체</b>'}
       <span class="spacer"></span><span class="state ${cls}">${label}</span></div>
     ${q && ownTime ? entryTimeRow(z, q) : ''}
+    ${q && ownEnd ? entryEndRow(z, q) : ''}
     <div class="btns">${primary}<button class="filled red" data-action="entry-close" ${data} ${db && st !== 'entryClosed' ? '' : 'disabled'}>입장 마감</button></div>
   </div>`;
 }
@@ -651,30 +699,33 @@ async function finishEntry(e, z, q) {
 }
 
 /** 시각 조정 창: −10/−5/+5/+10분으로 새 시각을 정하고, 덧붙일 말(선택)을 쓴다 (console.dart _EntryTimeDialog) */
-async function adjustTime(title, current, target, show) {
+async function adjustTime(title, current, target, show, { end = false, base = null } = {}) {
   let delta = 0;
+  // 입장 종료를 처음 정할 때는 current 가 없다 → base 에서 시작, 그대로도 보낼 수 있다
+  const isNew = current == null;
+  const start = current ?? base;
   const draw = (box) => {
-    const next = current + delta * 60e3;
+    const next = start + delta * 60e3;
     box.querySelector('[data-next]').textContent = timeShort(new Date(next));
     const d = box.querySelector('[data-delta]');
-    d.textContent = delta === 0 ? '변경 없음' : delta > 0 ? `${remainingText(delta * 60e3)} 늦춤` : `${remainingText(-delta * 60e3)} 당김`;
+    d.textContent = isNew ? '±로 맞춘 뒤 보내세요' : delta === 0 ? '변경 없음' : delta > 0 ? `${remainingText(delta * 60e3)} 늦춤` : `${remainingText(-delta * 60e3)} 당김`;
     d.style.color = delta === 0 ? 'var(--hint)' : delta > 0 ? 'var(--orange)' : 'var(--accent)';
-    box.querySelector('[data-dialog="ok"]').disabled = delta === 0;
+    box.querySelector('[data-dialog="ok"]').disabled = delta === 0 && !isNew;
   };
-  const r = await modal(`${dialogHead(show ? 'theater_comedy' : 'more_time', 'var(--orange)', title)}
-    <p class="hint" style="font-size:14px;margin-bottom:8px">지금 예정 ${timeShort(new Date(current))}</p>
-    <div class="center" style="font-size:30px;font-weight:800" data-next>${timeShort(new Date(current))}</div>
+  const r = await modal(`${dialogHead(show ? 'theater_comedy' : end ? 'timer_off' : 'more_time', 'var(--orange)', title)}
+    <p class="hint" style="font-size:14px;margin-bottom:8px">${isNew ? '새로 정하는 입장 종료 시각' : `지금 예정 ${timeShort(new Date(start))}`}</p>
+    <div class="center" style="font-size:30px;font-weight:800" data-next>${timeShort(new Date(start))}</div>
     <div class="center" style="font-size:13px;font-weight:600;color:var(--hint)" data-delta>변경 없음</div>
     <div class="steps">${[-10, -5, 5, 10].map((m) => `<button class="outlined" data-step="${m}">${m > 0 ? '+' + m : m}분</button>`).join('')}</div>
     <textarea class="input message" rows="1" placeholder="덧붙일 말 (선택) 예: 무대 점검으로 늦어집니다"></textarea>
-    <p class="hint" style="font-size:12px;margin-top:6px">보내면 이 ${target} 관객에게 알림이 가고, ${show ? '공연까지' : '입장까지'} 남은 시간이 바로 바뀝니다.</p>
+    <p class="hint" style="font-size:12px;margin-top:6px">${end ? `보내면 이 ${target} 관객에게 알림이 가고, 이 시각이 지나면 저절로 입장 마감됩니다.` : `보내면 이 ${target} 관객에게 알림이 가고, ${show ? '공연까지' : '입장까지'} 남은 시간이 바로 바뀝니다.`}</p>
     ${dialogActs([['cancel', '취소'], ['ok', '보내기', 'accent']])}`, (box, step) => {
     if (step) delta += Number(step.dataset.step);
     draw(box);
   });
-  if (!r || delta === 0) return null;
-  const next = current + delta * 60e3;
-  const text = timeChangeText(current, next, show);
+  if (!r || (delta === 0 && !isNew)) return null;
+  const next = start + delta * 60e3;
+  const text = end ? endChangeText(current, next) : timeChangeText(current, next, show);
   return { at: next, message: r.value ? `${text}\n${r.value}` : text };
 }
 
@@ -719,6 +770,19 @@ $app.addEventListener('click', async (ev) => {
     try {
       await send(e, { kind: 'entryTime', message: r.message, zone: z.name, queue: q?.name ?? null, entryAt: r.at });
       hint(`${title} 입장 예정을 ${timeShort(new Date(r.at))}로 바꿨습니다.`);
+    } catch (err) { hint(err.message); }
+  } else if (a === 'entry-end-time') {
+    const cur = entryEnd(z, q ?? z.queues[0] ?? null);
+    const title = [z.name, q?.name].filter(Boolean).join(' · ');
+    // 처음 정할 때 시작값: 입장 예정 30분 뒤, 이미 지났으면 지금부터 다음 10분 단위
+    const startAt = entryStart(z, q ?? z.queues[0] ?? null);
+    const soon = new Date(Date.now() + 10 * 60e3); soon.setSeconds(0, 0); soon.setMinutes(soon.getMinutes() - (soon.getMinutes() % 10));
+    const base = startAt && startAt + 30 * 60e3 > Date.now() ? startAt + 30 * 60e3 : soon.getTime();
+    const r = await adjustTime(`${title} 입장 종료 ${cur == null ? '시간 정하기' : '시간 조정'}`, cur, q ? '줄' : '구역', false, { end: true, base });
+    if (!r) return;
+    try {
+      await send(e, { kind: 'entryEndTime', message: r.message, zone: z.name, queue: q?.name ?? null, entryAt: r.at });
+      hint(`${title} 입장 종료를 ${timeShort(new Date(r.at))}로 정했습니다.`);
     } catch (err) { hint(err.message); }
   } else if (a === 'show-time') {
     const r = await adjustTime('공연 시간 조정', showStart(e), '공연', true);
@@ -807,6 +871,15 @@ window.addEventListener('hashchange', () => {
   render();
   window.scrollTo(0, 0);
 });
+// 입장 종료 시각이 되면 입장 관리를 다시 그린다 (저절로 입장 마감)
+setInterval(() => {
+  const e = currentEvent();
+  if (!e) return;
+  const now = Date.now();
+  const crossed = e.zones.some((z) => [null, ...z.queues].some((q) => { const at = entryEnd(z, q); return at && at <= now && at > now - 1500; }));
+  if (crossed) renderLive();
+}, 1000);
+
 // 화면으로 돌아오면 공연 정보 다시 받기 (main.dart resumed)
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCatalog(); });
 
