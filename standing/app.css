@@ -163,8 +163,7 @@ input { font: inherit; color: inherit; }
 .kind-ic { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 .kind-txt { flex: 1; min-width: 0; }
 .kind-txt b { display: block; font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
-.kind-txt span { display: block; margin-top: 4px; font-size: 14px; color: var(--hint); }
-.kind-txt small { display: block; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--hint); }
+.kind-txt small { display: block; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--hint); }
 .kind-card > .mi:last-child { color: var(--hint); }
 .preview-card { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
 .preview-card .mi { color: var(--green); font-size: 20px; }
@@ -319,8 +318,7 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-banner .h { display: flex; gap: 8px; align-items: baseline; }
 .entry-banner .h b { flex: 1; font-size: 16px; font-weight: 700; color: var(--c); }
 .entry-banner .h .hint { font-size: 12px; }
-.entry-banner .end { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--c); }
-.entry-banner .end .mi { font-size: 15px; }
+
 .entry-banner .m { margin-top: 3px; font-size: 14px; line-height: 1.4; }
 
 /* 입장까지 남은 시간 (home.dart EntryCountdown) */
@@ -333,6 +331,9 @@ li.mine .rail em { width: 10px; height: 10px; background: var(--orange); }
 .entry-countdown .clk b { display: block; font-size: 20px; line-height: 1.2; font-weight: 800; font-variant-numeric: tabular-nums; }
 .entry-countdown .clk b.soon { font-size: 15px; font-weight: 700; }
 .entry-countdown .hint { font-size: 12px; }
+/* 입장 종료까지: 빨강 */
+.entry-countdown.end { background: color-mix(in srgb, var(--red) 10%, transparent); }
+.entry-countdown.end .mi, .entry-countdown.end .clk b { color: var(--red); }
 /* 대기줄 확인 화면의 디지털 시계 (home.dart EntryCountdown) */
 .entry-clock { text-align: center; }
 .entry-clock .lbl { font-size: 13px; font-weight: 600; }

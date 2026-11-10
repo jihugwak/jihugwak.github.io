@@ -365,6 +365,8 @@ const CD = {
   '': { what: '입장까지', soon: '곧 입장이 시작됩니다', small: '입장 예정', icon: 'schedule' },
   show: { what: '공연까지', soon: '', small: '공연 시작', icon: 'theater_comedy' },
   line: { what: '줄서기까지', soon: '곧 줄서기가 시작됩니다', small: '줄서기 시작', icon: 'groups' },
+  // 입장 중일 때 입장 종료까지 (빨강). 종료되면 입장 마감 띠로 바뀐다
+  end: { what: '입장 종료까지', soon: '', small: '입장 종료', icon: 'timer_off' },
 };
 // 카드 안 디지털 시계 (home.dart EntryCountdown compact): "57일 20:52:34" / "01:29:05"
 const compactClock = (at, mode = '') => {
@@ -411,7 +413,7 @@ function showCountdown(big = false) {
 
 function countdownBox(at, big, mode) {
   if (big) return `<div class="entry-clock"><div data-clock="${at}" data-mode="${mode}">${clockInner(at, mode)}</div></div>`;
-  return `<div class="entry-countdown" aria-label="${countdownBig(at, mode)}">${ic(CD[mode].icon)}<span class="clk" data-countdown="${at}" data-mode="${mode}">${compactClock(at, mode)}</span><span class="hint">${timeShort(new Date(at))} ${CD[mode].small}</span></div>`;
+  return `<div class="entry-countdown${mode === 'end' ? ' end' : ''}" aria-label="${countdownBig(at, mode)}">${ic(CD[mode].icon)}<span class="clk" data-countdown="${at}" data-mode="${mode}">${compactClock(at, mode)}</span><span class="hint">${timeShort(new Date(at))} ${CD[mode].small}</span></div>`;
 }
 
 // home.dart countdownText: "2일 3시간 04분 05초" / "1시간 04분 05초" / "4분 05초" / "5초"
@@ -426,18 +428,21 @@ function countdownText(ms) {
 
 // home.dart EntryStateBanner (입장 전이면 남은 시간)
 function entryBanner(big = false) {
+  // 입장 종료 시각이 있으면 입장 시작 이후부터 (상태와 상관없이) 그때까지 남은 시간
   const n = myEntryState();
-  if (!n) return entryCountdown(big);
+  const end = myEntryEnd();
+  const from = n ? 0 : myEntryStart();
+  let endCountdown = end && end > Date.now() && from != null ? countdownBox(end, false, 'end') : '';
+  // 입장 예정 전이면 숨겨 두었다가 시각이 되면 보인다 (1초마다 확인)
+  if (endCountdown && from > Date.now()) endCountdown = endCountdown.replace('<div class="entry-countdown', `<div hidden data-from="${from}" class="entry-countdown`);
+  if (!n) return entryCountdown(big) + endCountdown;
   // 입장 완료: 띠를 내리고 공연까지 남은 시간만
-  if (n.kind === 'entryDone') return showCountdown(big);
+  if (n.kind === 'entryDone') return showCountdown(big) + endCountdown;
   const open = n.kind === 'entryOpen';
   const body = open ? n.message : (n.message === KINDS.entryClosed.message ? '더 이상 입장할 수 없습니다.' : n.message);
-  // 입장 중이면 "오후 7:30 입장 종료"
-  const end = open ? myEntryEnd() : null;
-  const endLine = end && end > Date.now() ? `<div class="end">${ic('timer_off', 'outlined')}${timeShort(new Date(end))} 입장 종료</div>` : '';
   return `<div class="entry-banner ${open ? 'open' : 'closed'}">${ic(kind(n.kind).icon)}
     <div class="t"><div class="h"><b>${open ? '입장이 시작되었습니다' : '입장이 마감되었습니다'}</b><span class="hint">${timeShort(new Date(n.at))}</span></div>
-    ${body ? `<div class="m">${esc(body)}</div>` : ''}${endLine}</div></div>${showCountdown(big)}`;
+    ${body ? `<div class="m">${esc(body)}</div>` : ''}</div></div>${showCountdown(big)}${endCountdown}`;
 }
 
 // 같은 번호 중복 (home.dart DuplicateWarning): 어느 쪽이 잘못 넣었는지 알 수 없어 모두에게 확인만 부탁한다
@@ -672,10 +677,10 @@ const mixedZones = (e) => e.zones.some((z) => z.seated) && e.zones.some((z) => !
 // 종류 고르기 (ticket_entry.dart _kindPicker)
 function viewKindPicker(e) {
   const names = (seated) => esc(e.zones.filter((z) => !!z.seated === seated).map((z) => z.name).join(' · '));
-  const card = (kind, icon, title, desc, zones) => `
+  const card = (kind, icon, title, zones) => `
     <button type="button" class="card kind-card" data-action="kind" data-kind="${kind}">
       <span class="kind-ic">${ic(icon, 'round', 28)}</span>
-      <span class="kind-txt"><b>${title}</b><span>${desc}</span>${zones ? `<small>${zones}</small>` : ''}</span>
+      <span class="kind-txt"><b>${title}</b>${zones ? `<small>${zones}</small>` : ''}</span>
       ${ic('chevron_right', 'round')}
     </button>`;
   return `${appbar('좌석 종류', { back: '#/' })}
@@ -684,9 +689,9 @@ function viewKindPicker(e) {
       <div class="sub-14">${koreanShort(e.date)} · ${esc(e.venue)}</div>
       <div style="height:28px"></div>
       <div class="section-title" style="margin-bottom:12px">내 티켓은 어떤 좌석인가요?</div>
-      ${card('standing', 'groups', '스탠딩', '입장번호 순서대로 줄을 섭니다', names(false))}
+      ${card('standing', 'groups', '스탠딩', names(false))}
       <div style="height:12px"></div>
-      ${card('seated', 'event_seat', '지정석', '구역만 고르면 입장 시작을 알려 드립니다', names(true))}
+      ${card('seated', 'event_seat', '지정석', names(true))}
     </div>`;
 }
 
@@ -1332,6 +1337,7 @@ window.addEventListener('hashchange', () => {
 setInterval(() => {
   document.querySelectorAll('[data-countdown]').forEach((el) => { el.innerHTML = compactClock(Number(el.dataset.countdown), el.dataset.mode); });
   document.querySelectorAll('[data-clock]').forEach((el) => { el.innerHTML = clockInner(Number(el.dataset.clock), el.dataset.mode); });
+  document.querySelectorAll('[data-from]').forEach((el) => { el.hidden = Date.now() < Number(el.dataset.from); });
 }, 1000);
 
 // 입장 종료 시각이 되면 다시 그린다 (저절로 입장 마감)
