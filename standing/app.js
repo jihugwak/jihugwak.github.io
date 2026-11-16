@@ -133,7 +133,9 @@ function parseCatalog(text) {
     });
     events.push({
       code, title: e.title || '', date: parseDate(e.date), entryAt: eventEntry,
-      venue: e.venue || '', zones, location: eventLoc,
+      venue: e.venue || '', zones, location: eventLoc, description: e.description || '',
+      // 포스터 사진 (관리자가 올린 https 주소)
+      poster: typeof e.poster === 'string' && e.poster.startsWith('http') ? e.poster : null,
     });
   }
   const notices = (root.notices || []).map((n) => ({
@@ -642,6 +644,7 @@ const bigFigure = (label, value, suffix = '', size = 44) => `<div class="figure"
 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
+  if (parts[0] === 'd' && parts[1]) return { name: 'detail', code: parts[1].toUpperCase() };
   if (parts[0] === 'e' && parts[1]) return { name: 'entry', code: parts[1].toUpperCase(), edit: parts[2] === 'edit' };
   if (parts[0] === 'q') return { name: 'queue' };
   if (parts[0] === 'line') return { name: 'line' };
@@ -658,7 +661,7 @@ function viewHome() {
   const unread = unreadCount();
   const cards = my.map((e) => {
     const joined = c && c.e.code === e.code;
-    return `<div class="card event-card" data-card="${e.code}" data-go="${joined ? '#/q' : '#/e/' + e.code}">
+    return `<div class="card event-card" data-card="${e.code}" data-go="${joined ? '#/q' : '#/d/' + e.code}">
       ${cardHeader(e.title, koreanShort(showStart(e)), e.venue)}
       <div style="height:18px"></div>
       ${joined && c.z.seated ? `
@@ -670,7 +673,7 @@ function viewHome() {
         <div class="figure-row">${bigFigure(`${c.z.name} · ${c.q.name}`, String(c.p.ticket), '번')}<button class="text-btn tight" data-go="#/e/${e.code}/edit">번호 수정</button></div>
         <div style="height:16px"></div>
         ${standingToggle(c, true)}`
-      : `<button class="filled big compact" data-go="#/e/${e.code}">${ic('dialpad', 'round')}<span>번호 입력</span></button>
+      : `<button class="filled big compact" data-go="#/d/${e.code}">${ic('dialpad', 'round')}<span>번호 입력</span></button>
         <div class="hint center" style="font-size:12px;margin-top:8px">티켓의 입장번호를 넣으면 내 대기줄을 알려 드려요</div>`}
     </div>`;
   }).join('');
@@ -692,6 +695,46 @@ function viewHome() {
 let entryZone = null;
 /** 지정석·스탠딩이 섞인 공연에서 고른 종류: 'seated' | 'standing' | null(종류 고르기 화면부터) */
 let entryKind = null;
+// 번호 입력에서 뒤로: 공연 상세로 (기록은 바꿔 끼운다)
+const detailBack = (e) => `<button class="icon-btn lead" data-replace="#/d/${e.code}" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button>`;
+
+// 공연 상세 (event_detail.dart): 포스터 + 제목·날짜·장소 + 시간 + 구역 + 소개 → [입장 정보 입력]
+function viewDetail(r) {
+  const e = eventByCode(r.code);
+  if (!e) return `${appbar('공연', { back: '#/' })}<div class="center" style="padding-top:40vh">공연 정보를 찾을 수 없습니다</div>`;
+  const show = showStart(e);
+  const same = (f) => { const all = new Set(e.zones.map((z) => f(z)?.getTime() ?? null)); return all.size === 1 ? [...all][0] : null; };
+  const admission = same((z) => z.admission), admissionEnd = same((z) => z.admissionEnd);
+  const perZone = admission == null && e.zones.some((z) => z.admission);
+  const timeRow = (icon, label, at) => `<div class="d-row">${ic(icon, 'outlined')}<span class="lbl">${label}</span><b>${koreanShort(new Date(at))}</b></div>`;
+  const zoneRow = (z) => {
+    const sub = [z.seated ? '지정석' : `입장번호 ${z.min}~${z.max}`,
+      perZone && z.admission ? `${timeShort(z.admission)} 입장` : '', perZone && z.admissionEnd ? `${timeShort(z.admissionEnd)} 입장 종료` : ''].filter(Boolean).join(' · ');
+    return `<div class="d-row">${ic(z.seated ? 'event_seat' : 'groups', 'outlined')}<div class="zn"><b>${esc(z.name)}</b><small>${esc(sub)}</small></div></div>`;
+  };
+  const standing = e.zones.filter((z) => !z.seated), seated = e.zones.filter((z) => z.seated);
+  return `<div class="detail">
+    <div class="poster${e.poster ? '' : ' none'}">${e.poster ? `<img src="${esc(e.poster)}" alt="${esc(e.title)} 포스터" onerror="this.parentNode.classList.add('none');this.remove()">` : ''}${ic('music_note', 'round', 96)}</div>
+    <button class="icon-btn poster-back" data-go="#/" aria-label="뒤로">${ic('arrow_back_ios_new', '', 20)}</button>
+    <div class="body">
+      <h2 class="d-title">${esc(e.title)}</h2>
+      <div class="meta">${ic('event', 'outlined', 15)}<span>${koreanShort(show)}</span></div>
+      ${e.venue ? `<div class="meta">${ic('place', 'outlined', 15)}<span>${esc(e.venue)}</span></div>` : ''}
+      <div style="height:20px"></div>
+      <div class="card d-card">
+        ${timeRow('theater_comedy', '공연 시작', show)}
+        ${admission != null ? timeRow('login', '입장 시작', admission) : ''}
+        ${admissionEnd != null ? timeRow('timer_off', '입장 종료', admissionEnd) : ''}
+        ${perZone ? '<div class="hint" style="font-size:13px;padding:8px 0">입장 시간은 구역마다 다릅니다. 아래 구역에서 확인하세요.</div>' : ''}
+      </div>
+      ${standing.length ? `<div class="section-title" style="margin:24px 0 8px">스탠딩 구역</div><div class="card d-card">${standing.map(zoneRow).join('')}</div>` : ''}
+      ${seated.length ? `<div class="section-title" style="margin:24px 0 8px">지정석 구역</div><div class="card d-card">${seated.map(zoneRow).join('')}</div>` : ''}
+      ${e.description.trim() ? `<div class="section-title" style="margin:24px 0 8px">공연 소개</div><p class="d-desc">${esc(e.description.trim())}</p>` : ''}
+    </div>
+    <div class="bottom-actions"><button class="filled big" data-replace="#/e/${e.code}">${ic('confirmation_number', 'outlined')}<span>입장 정보 입력</span></button></div>
+  </div>`;
+}
+
 const mixedZones = (e) => e.zones.some((z) => z.seated) && e.zones.some((z) => !z.seated);
 
 // 종류 고르기 (ticket_entry.dart _kindPicker)
@@ -703,7 +746,7 @@ function viewKindPicker(e) {
       <span class="kind-txt"><b>${title}</b>${zones ? `<small>${zones}</small>` : ''}</span>
       ${ic('chevron_right', 'round')}
     </button>`;
-  return `${appbar('좌석 종류', { back: '#/' })}
+  return `${appbar('좌석 종류', { lead: detailBack(e) })}
     <div class="body">
       <h2 class="title-22">${esc(e.title)}</h2>
       <div class="sub-14">${koreanShort(e.date)} · ${esc(e.venue)}</div>
@@ -732,7 +775,7 @@ function viewEntry(r) {
   // 고치는 중 뒤로 가기 = 종류 고르기로
   const kindBack = mixed && !locked;
   const backBtn = `<button class="icon-btn lead" data-action="kind-back" aria-label="뒤로">${ic('arrow_back_ios_new', '', 22)}</button>`;
-  return `${appbar(seated ? '구역 선택' : '번호 입력', kindBack ? { lead: backBtn } : { back: '#/' })}
+  return `${appbar(seated ? '구역 선택' : '번호 입력', kindBack ? { lead: backBtn } : p ? { back: '#/' } : { lead: detailBack(e) })}
     <form class="body" data-form="ticket">
       <h2 class="title-22">${esc(e.title)}</h2>
       <div class="sub-14">${koreanShort(e.date)} · ${esc(e.venue)}</div>
@@ -1147,7 +1190,7 @@ function render() {
   const focused = document.activeElement?.id;
   if (['ticket', 'code', 'scan-code'].includes(focused)) return; // 입력 중에는 다시 그리지 않는다 (포커스 유지)
   if (r.name === 'scan' && document.getElementById('scanner')) return; // 카메라를 끊지 않게
-  $app.innerHTML = r.name === 'entry' ? viewEntry(r) : r.name === 'queue' ? viewQueue() : r.name === 'line' ? viewLine()
+  $app.innerHTML = r.name === 'detail' ? viewDetail(r) : r.name === 'entry' ? viewEntry(r) : r.name === 'queue' ? viewQueue() : r.name === 'line' ? viewLine()
     : r.name === 'account' ? viewAccount() : r.name === 'scan' ? viewScan() : viewHome();
   renderTabbar();
   setupDial();
@@ -1175,10 +1218,12 @@ $app.addEventListener('pointerdown', (ev) => {
 $app.addEventListener('contextmenu', (ev) => { if (ev.target.closest('[data-card]')) ev.preventDefault(); });
 
 $app.addEventListener('click', async (ev) => {
-  const t = ev.target.closest('[data-go],[data-action]');
+  const t = ev.target.closest('[data-go],[data-action],[data-replace]');
   if (!t) return;
   if (longPressed) { longPressed = false; ev.preventDefault(); return; }
   if (t.dataset.go) { ev.preventDefault(); ev.stopPropagation(); go(t.dataset.go); return; }
+  // 기록을 남기지 않고 바꾸기: 공연 상세 ↔ 번호 입력 (확인 뒤 뒤로 가면 둘 다 건너뛰고 홈)
+  if (t.dataset.replace) { ev.preventDefault(); ev.stopPropagation(); location.replace(t.dataset.replace); return; }
   const a = t.dataset.action;
   if (a === 'kind') {
     entryKind = t.dataset.kind;
@@ -1293,7 +1338,7 @@ $app.addEventListener('submit', async (ev) => {
     input.blur();
     rememberEvent(e.code);
     entryZone = null;
-    go('#/e/' + e.code);
+    go('#/d/' + e.code); // 공연 상세부터
   } else if (form === 'scan') {
     document.getElementById('scan-code').blur();
     handleScan(document.getElementById('scan-code').value);
@@ -1332,12 +1377,12 @@ $app.addEventListener('submit', async (ev) => {
   }
 });
 
-/** 공연 열기: 이미 번호를 넣었으면 대기줄 확인, 아니면 번호 입력 (root.dart openEvent) */
+/** 공연 열기: 이미 번호를 넣었으면 대기줄 확인, 아니면 공연 상세 (root.dart openEvent) */
 function openEvent(code) {
   rememberEvent(code);
   entryZone = null;
   entryKind = null;
-  go(state.participant?.code === code && current() ? '#/q' : '#/e/' + code);
+  go(state.participant?.code === code && current() ? '#/q' : '#/d/' + code);
 }
 
 function scrollToMine() {
