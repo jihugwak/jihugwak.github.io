@@ -324,15 +324,32 @@ const myAllNotices = () => {
 };
 // 안내 목록·안 읽음에 보이는 것
 const myNotices = () => myAllNotices().filter((n) => !kind(n.kind).silent);
-// 내 대기줄의 현재 입장 상태 = 입장 시작/마감/완료 중 가장 최근 것 (없으면 입장 전)
-// 입장 종료 시각이 지났으면, 그 뒤로 스태프가 다시 열지 않은 한 입장 마감 (notice.dart entryStateFor)
-function myEntryState() {
-  const latest = myAllNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed' || n.kind === 'entryDone') || null;
-  const end = myEntryEnd();
-  if (end && Date.now() >= end && (!latest || (latest.at < end && latest.kind !== 'entryDone'))) {
-    return { kind: 'entryClosed', message: '입장 종료 시간이 지나 더 이상 입장할 수 없습니다.', at: end, auto: true };
+/** 입장 상태 계산 (notice.dart resolveEntryState). last = 스태프가 보낸 최근 상태 {kind, at}.
+ * 시작 시각이 되면 (그 뒤로 바꾸지 않은 한) 입장 시작, 시작 전인데 시각을 최근 상태보다 나중에 바꿨으면(늦춤) 입장 전,
+ * 종료 시각이 지나면 (그 뒤로 다시 열지 않은 한) 입장 마감. auto: 'opened' | 'closed' | null */
+function resolveEntry(last, start, changedAt, end, now = Date.now()) {
+  if (last?.kind === 'entryDone') return { kind: 'entryDone', at: last.at, auto: null };
+  let k = last?.kind ?? null, at = last?.at ?? null, auto = null;
+  if (start) {
+    if (now < start) {
+      if (changedAt && (at == null || changedAt > at)) { k = null; at = null; }
+    } else if (at == null || at < start) { k = 'entryOpen'; at = start; auto = 'opened'; }
   }
-  return latest;
+  if (end && now >= end && (at == null || at < end)) return { kind: 'entryClosed', at: end, auto: 'closed' };
+  return { kind: k, at, auto };
+}
+
+// 내 대기줄의 현재 입장 상태 = 입장 시작/마감/완료 중 가장 최근 것 (없으면 입장 전)
+// 입장 시작 시각이 되면 저절로 시작, 종료 시각이 지나면 저절로 마감 (notice.dart entryStateFor)
+function myEntryState() {
+  // 관객이 직접 [입장했어요]를 눌렀으면 입장 완료 (store.dart myEntryState)
+  if (current()?.p.entered) return { kind: 'entryDone', message: '입장했어요', at: Date.now(), auto: true };
+  const latest = myAllNotices().find((n) => n.kind === 'entryOpen' || n.kind === 'entryClosed' || n.kind === 'entryDone') || null;
+  const changed = myAllNotices().find((n) => n.kind === 'entryTime' && n.entryAt);
+  const r = resolveEntry(latest, myEntryStart(), changed?.at, myEntryEnd());
+  if (r.auto === 'opened') return { kind: 'entryOpen', message: '입장 시작 시간이 되어 입장이 시작되었습니다.', at: r.at, auto: true };
+  if (r.auto === 'closed') return { kind: 'entryClosed', message: '입장 종료 시간이 지나 더 이상 입장할 수 없습니다.', at: r.at, auto: true };
+  return r.kind ? latest : null;
 }
 
 // 내 대기줄 입장 종료 시각(ms): 스태프가 조정한 것(가장 최근 입장 종료 시간 변경) > 관리자가 정한 줄 시각 > 구역 시각
@@ -596,6 +613,9 @@ function standingToggle(c, compact = false) {
     return `<button class="${cls}" disabled>${ic('schedule')}<span>줄서기 ${remainingText(left)} 뒤 시작</span></button>
       <div class="hint center" style="font-size:12px;margin-top:4px">${koreanShort(c.z.entryAt)} 부터 줄설 수 있습니다.</div>`;
   }
+  // 직접 [입장했어요]를 눌렀으면 꺼진 [입장 완료], 입장이 마감되면 [줄에 섰어요] 대신 [입장했어요]
+  if (c.p.entered) return `<button class="${cls} grey" disabled>${ic('check_circle')}<span>입장 완료</span></button>`;
+  if (myEntryState()?.kind === 'entryClosed') return `<button class="${cls}" data-action="entered">${ic('how_to_reg')}<span>입장했어요</span></button>`;
   if (state.checking) return `<button class="${cls}" disabled>${ic('person_pin_circle')}<span>위치 확인 중…</span></button>`;
   return c.p.standing
     ? `<button class="${cls} grey" data-action="stand-off">${ic('logout')}<span>줄에서 나왔어요</span></button>`
@@ -1182,6 +1202,17 @@ $app.addEventListener('click', async (ev) => {
     if (!seated) document.getElementById('ticket').focus();
   } else if (a === 'stand-on') {
     setStanding(true);
+  } else if (a === 'entered') {
+    // [입장했어요]: 한 번 묻고 입장 완료로 본다, 줄에서도 빠진다 (StandingToggle._confirmEntered)
+    const id = await dialog('입장하셨나요?', '입장한 것으로 표시하고 줄에서 빠집니다.',
+      [{ label: '취소', id: 'cancel' }, { label: '입장했어요', id: 'entered' }], { icon: 'how_to_reg' });
+    if (id === 'entered' && state.participant) {
+      state.participant.entered = true;
+      state.participant.standing = false;
+      saveParticipant();
+      refreshSpots();
+      render();
+    }
   } else if (a === 'stand-off') {
     // 실수로 눌러 나가지 않도록 한 번 묻는다 (앱 StandingToggle 과 같은 창, 웹은 블루투스가 없어 설명만 다름)
     const id = await dialog('줄에서 나왔나요?', '나가면 줄 현황에서 "줄에 서 있음"이 꺼져요.',
@@ -1296,7 +1327,8 @@ $app.addEventListener('submit', async (ev) => {
     rememberEvent(e.code);
     saveParticipant();
     input.blur();
-    go('#/q');
+    // 번호 입력 화면을 기록에서 대기줄 확인으로 바꿔 끼운다 → 뒤로 가면 입력 화면이 아니라 홈으로
+    location.replace('#/q');
   }
 });
 
@@ -1340,10 +1372,10 @@ setInterval(() => {
   document.querySelectorAll('[data-from]').forEach((el) => { el.hidden = Date.now() < Number(el.dataset.from); });
 }, 1000);
 
-// 입장 종료 시각이 되면 다시 그린다 (저절로 입장 마감)
+// 입장 시작·종료 시각이 되면 다시 그린다 (저절로 입장 시작·마감)
 setInterval(() => {
-  const end = myEntryEnd();
-  if (end && end <= Date.now() && end > Date.now() - 1500 && ['home', 'queue'].includes(route().name)) render();
+  const crossed = [myEntryStart(), myEntryEnd()].some((t) => t && t <= Date.now() && t > Date.now() - 1500);
+  if (crossed && ['home', 'queue'].includes(route().name)) render();
 }, 1000);
 
 // 줄서기 시작까지 남은 시간 갱신 (시각이 되면 자동으로 눌리게)
@@ -1352,16 +1384,19 @@ setInterval(() => {
   if (c?.z.entryAt && !c.p.standing && c.z.entryAt > Date.now() - 2000 && ['home', 'queue', 'line'].includes(route().name)) render();
 }, 1000);
 
-// 화면을 보고 있는 동안 30초마다: 관리자가 다시 게시한 입장 시각·대기줄·배치도를 따라잡는다 (바뀌었을 때만 다시 그림)
-setInterval(async () => {
-  if (document.visibilityState !== 'visible') return;
+// 관리자가 다시 게시한 입장 시각·대기줄·배치도를 따라잡는다 (바뀌었을 때만 다시 그림)
+async function catalogChanged() {
   const before = store.get('catalog', null);
   await loadCatalog();
   if (store.get('catalog', null) !== before && ['home', 'queue', 'line'].includes(route().name)) render();
-}, 30e3);
+}
+// 게시하면 Realtime 신호로 바로, 신호를 놓쳤을 때 대비해 화면을 보고 있는 동안 30초마다도
+if (db) db.channel('catalog').on('broadcast', { event: 'updated' }, () => catalogChanged()).subscribe();
+setInterval(() => { if (document.visibilityState === 'visible') catalogChanged(); }, 30e3);
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { loadCatalog().then(render); syncSpot(); }
+  // 돌아오면: 백그라운드 동안 실시간 연결이 끊겼을 수 있으니 안내도 다시 받고 새로 붙는다
+  if (document.visibilityState === 'visible') { loadCatalog().then(render); syncSpot(); channelCode = null; syncNotices(); }
 });
 
 // ───────── 시작 ─────────

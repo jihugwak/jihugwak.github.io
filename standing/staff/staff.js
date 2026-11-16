@@ -114,21 +114,24 @@ function parseCatalog(text) {
   return events.sort((a, b) => a.date - b.date);
 }
 
-async function refreshCatalog() {
+/** live: 실시간 신호·주기 확인 — 바뀌었을 때만, 입력 중인 폼은 두고 다시 그린다 */
+async function refreshCatalog(live = false) {
   const cached = store.get('catalog', null);
   if (cached && !state.events.length) { try { state.events = parseCatalog(cached); } catch { /* 깨진 캐시는 무시 */ } }
   try {
     const res = await fetch(CONFIG.catalogUrl + '?t=' + Math.floor(Date.now() / 1000), { cache: 'no-store' });
     if (!res.ok) throw new Error('서버 응답 ' + res.status);
     const text = await res.text();
-    state.events = parseCatalog(text);
-    store.set('catalog', text);
     state.lastRefresh = new Date();
     state.refreshError = null;
+    if (live && text === cached) return;
+    state.events = parseCatalog(text);
+    store.set('catalog', text);
   } catch (err) {
     state.refreshError = String(err.message || err);
+    if (live) return;
   }
-  render();
+  if (live) renderLive(); else render();
 }
 
 const eventByCode = (code) => state.events.find((e) => e.code === code);
@@ -279,14 +282,34 @@ const entryEnd = (z, q) => latest(state.notices.filter((n) => n.kind === 'entryE
 /** 대기줄마다 입장 종료 시각이 다른지 */
 const entryEndsDiffer = (z) => !z.seated && new Set(z.queues.map((q) => entryEnd(z, q))).size > 1;
 
-/** 화면에 보일 입장 상태 (store.dart entryStatus): 종료 시각이 지났으면, 그 뒤로 다시 열지 않은 한 입장 마감 (auto) */
+/** 입장 상태 계산 (notice.dart resolveEntryState). last = 스태프가 보낸 최근 상태 {kind, at}.
+ * 시작 시각이 되면 (그 뒤로 바꾸지 않은 한) 입장 시작, 시작 전인데 시각을 최근 상태보다 나중에 바꿨으면(늦춤) 입장 전,
+ * 종료 시각이 지나면 (그 뒤로 다시 열지 않은 한) 입장 마감. auto: 'opened' | 'closed' | null */
+function resolveEntry(last, start, changedAt, end, now = Date.now()) {
+  if (last?.kind === 'entryDone') return { kind: 'entryDone', at: last.at, auto: null };
+  let k = last?.kind ?? null, at = last?.at ?? null, auto = null;
+  if (start) {
+    if (now < start) {
+      if (changedAt && (at == null || changedAt > at)) { k = null; at = null; }
+    } else if (at == null || at < start) { k = 'entryOpen'; at = start; auto = 'opened'; }
+  }
+  if (end && now >= end && (at == null || at < end)) return { kind: 'entryClosed', at: end, auto: 'closed' };
+  return { kind: k, at, auto };
+}
+
+/** 이 대기줄에 해당하는 가장 최근 입장 시간 변경 안내 */
+const entryTimeNotice = (z, q) => latest(state.notices.filter((n) => n.kind === 'entryTime' && n.entryAt && (!n.zone || n.zone === z.name) && (!n.queue || n.queue === q?.name)));
+
+/** 화면에 보일 입장 상태 (store.dart entryStatus): 시작 시각이 되면 저절로 입장 중, 종료 시각이 지나면 저절로 마감 (auto) */
 function entryStatus(z, q) {
   const last = latest(state.notices.filter((n) => kind(n.kind).state && (!n.zone || n.zone === z.name) && (!n.queue || n.queue === q?.name)));
-  // 구역 전체 줄: 줄마다 종료 시각이 다르면 저절로 마감하지 않는다
+  // 구역 전체 줄: 줄마다 시각이 다르면 저절로 바꾸지 않는다
   const multi = !q && !z.seated && z.queues.length;
   const end = multi ? (entryEndsDiffer(z) ? null : entryEnd(z, z.queues[0])) : entryEnd(z, q);
-  if (end && Date.now() >= end && (!last || (last.at < end && last.kind !== 'entryDone'))) return { kind: 'entryClosed', auto: true };
-  return { kind: last?.kind ?? null, auto: false };
+  const sq = multi ? z.queues[0] : q;
+  const noStart = multi && entryStartsDiffer(z);
+  const r = resolveEntry(last, noStart ? null : entryStart(z, sq), noStart ? null : entryTimeNotice(z, sq)?.at, end);
+  return { kind: r.kind, auto: r.auto };
 }
 
 /** "입장 종료가 10분 늦춰졌습니다. 새 입장 종료: 오후 7:40" (notice.dart entryEndTimeChangeText). from 이 없으면 새로 정한 것 */
@@ -520,7 +543,7 @@ function entryTimeRowZone(z, q) {
 function entryRow(z, q, ownTime, ownEnd = false) {
   const status = entryStatus(z, q);
   const st = status.kind;
-  const [label, cls] = st === 'entryOpen' ? ['입장 중', 'open'] : st === 'entryClosed' ? [status.auto ? '종료 시간 지나 마감' : '입장 마감', 'closed'] : st === 'entryDone' ? ['입장 완료', 'done'] : ['입장 전', ''];
+  const [label, cls] = st === 'entryOpen' ? [status.auto === 'opened' ? '시작 시간 되어 입장 중' : '입장 중', 'open'] : st === 'entryClosed' ? [status.auto === 'closed' ? '종료 시간 지나 마감' : '입장 마감', 'closed'] : st === 'entryDone' ? ['입장 완료', 'done'] : ['입장 전', ''];
   const data = `data-zone="${esc(z.name)}" data-queue="${esc(q?.name ?? '')}"`;
   // 입장 중이면 [입장 완료] (관객 앱의 입장 시작 띠를 내린다). 완료하면 회색으로 꺼진 채 남는다. 아니면 [입장 시작]
   const primary = st === 'entryOpen' || st === 'entryDone'
@@ -871,17 +894,25 @@ window.addEventListener('hashchange', () => {
   render();
   window.scrollTo(0, 0);
 });
-// 입장 종료 시각이 되면 입장 관리를 다시 그린다 (저절로 입장 마감)
+// 입장 시작·종료 시각이 되면 입장 관리를 다시 그린다 (저절로 입장 시작·마감)
 setInterval(() => {
   const e = currentEvent();
   if (!e) return;
   const now = Date.now();
-  const crossed = e.zones.some((z) => [null, ...z.queues].some((q) => { const at = entryEnd(z, q); return at && at <= now && at > now - 1500; }));
+  const crossed = e.zones.some((z) => [null, ...z.queues].some((q) => { return [entryStart(z, q), entryEnd(z, q)].some((at) => at && at <= now && at > now - 1500); }));
   if (crossed) renderLive();
 }, 1000);
 
 // 화면으로 돌아오면 공연 정보 다시 받기 (main.dart resumed)
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCatalog(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refreshCatalog();
+  // 돌아오면: 실시간 연결이 끊겼을 수 있으니 안내도 다시 받고 새로 붙는다
+  if (watching) { const code = watching; watching = null; startNotices(code); }
+});
+// 관리자가 다시 게시하면 (Realtime 신호) 바로 받는다. 신호를 놓쳤을 때 대비해 보고 있는 동안 30초마다도 확인
+if (db) db.channel('catalog').on('broadcast', { event: 'updated' }, () => refreshCatalog(true)).subscribe();
+setInterval(() => { if (!document.hidden) refreshCatalog(true); }, 30e3);
 
 render();
 refreshCatalog();
